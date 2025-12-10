@@ -1,0 +1,16 @@
+// next.config.mjs
+const isProd = process.env.NODE_ENV === 'production';
+const repoName = 'agrifiles-frontend'; // your repo name
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'export', // important: generate static HTML
+  basePath: isProd ? `/${repoName}` : '',
+  assetPrefix: isProd ? `/${repoName}/` : '',
+  images: {
+    unoptimized: true, // GitHub Pages doesn't support next/image optimization
+  },
+  trailingSlash: true, // helps avoid some 404s on Pages
+};
+
+export default nextConfig;
