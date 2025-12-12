@@ -1011,7 +1011,7 @@ const submitForm = async (e) => {
             className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
             title={STANDARD_LAYOUTS['layout_1_vertical_left'].description}
           >
-            Layout 1: Vertical
+            {t.layout1}
           </button>
           
           <button
@@ -1021,8 +1021,8 @@ const submitForm = async (e) => {
               setStandardGroup({
                 id: 'standard-layout-group',
                 rotation: 0,
-                x: 100,
-                y: 90,
+            x: 60,
+                y: 35,
                 shapes: layout.shapes
               });
               setSelectedId('standard-layout-group');
@@ -1030,7 +1030,7 @@ const submitForm = async (e) => {
             className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
             title={STANDARD_LAYOUTS['layout_2_horizontal_bottom'].description}
           >
-            Layout 2: Horizontal
+            {t.layout2}
           </button>
           
           <button
@@ -1040,8 +1040,8 @@ const submitForm = async (e) => {
               setStandardGroup({
                 id: 'standard-layout-group',
                 rotation: 0,
-                x: 100,
-                y: 90,
+                 x: 70,
+                y: 5,
                 shapes: layout.shapes
               });
               setSelectedId('standard-layout-group');
@@ -1049,7 +1049,7 @@ const submitForm = async (e) => {
             className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
             title={STANDARD_LAYOUTS['layout_3_u_shaped'].description}
           >
-            Layout 3: U-Shaped
+            {t.layout3}
           </button>
           
           <button
@@ -1059,8 +1059,8 @@ const submitForm = async (e) => {
               setStandardGroup({
                 id: 'standard-layout-group',
                 rotation: 0,
-                x: 100,
-                y: 90,
+                  x: 55,
+                y: 5,
                 shapes: layout.shapes
               });
               setSelectedId('standard-layout-group');
@@ -1068,7 +1068,26 @@ const submitForm = async (e) => {
             className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700"
             title={STANDARD_LAYOUTS['layout_4_grid_pattern'].description}
           >
-            Layout 4: Grid
+            {t.layout4}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const layout = STANDARD_LAYOUTS['layout_5_both_sides'];
+              setStandardGroup({
+                id: 'standard-layout-group',
+                rotation: 0,
+                x: 0,
+                y: 0,
+                shapes: layout.shapes
+              });
+              setSelectedId('standard-layout-group');
+            }}
+            className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+            title={STANDARD_LAYOUTS['layout_5_both_sides'].description}
+          >
+            {t.layout5}
           </button>
         </div>
         )}
@@ -1254,6 +1273,7 @@ const submitForm = async (e) => {
                       width={s.width}
                       height={s.height}
                       image={valveImg}
+                      rotation={s.rotation || 0}
                     />
                   );
                 }
@@ -1266,6 +1286,7 @@ const submitForm = async (e) => {
                       width={s.width}
                       height={s.height}
                       image={filterImg}
+                      rotation={s.rotation || 0}
                     />
                   );
                 }
@@ -1278,6 +1299,7 @@ const submitForm = async (e) => {
                       width={s.width}
                       height={s.height}
                       image={flushImg}
+                      rotation={s.rotation || 0}
                     />
                   );
                 }
@@ -1465,6 +1487,7 @@ const submitForm = async (e) => {
                   width={s.width}
                   height={s.height}
                   image={valveImg}
+                  rotation={s.rotation || 0}
                 />
               );
 
@@ -1478,6 +1501,7 @@ const submitForm = async (e) => {
                   width={s.width}
                   height={s.height}
                   image={filterImg}
+                  rotation={s.rotation || 0}
                 />
               );
 
@@ -1491,6 +1515,7 @@ const submitForm = async (e) => {
                   width={s.width}
                   height={s.height}
                   image={flushImg}
+                  rotation={s.rotation || 0}
                 />
               );
 

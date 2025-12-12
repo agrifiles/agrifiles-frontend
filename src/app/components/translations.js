@@ -135,6 +135,11 @@ place: "Place",
         clearAll: 'Clear All',
         confirmClearAll: 'This will clear all content from the canvas. Continue?',
         export: 'Export Data (Console)',
+        layout1: 'Well North-East',
+        layout2: 'Well North-West',
+        layout3: 'Well West-South',
+        layout4: 'Well East-South',
+        layout5: 'Both Side',
 
 
 
@@ -343,6 +348,11 @@ place: "ठिकाण",
         clearAll: 'सर्व साफ करा',
         confirmClearAll: 'हे कॅनव्हासमधील सर्व सामग्री साफ करेल. सुरू ठेवायचे?',
         export: 'माहिती निर्यात करा (कन्सोल)',
+        layout1: 'विहीर उत्तर - पूर्व',
+        layout2: 'विहीर उत्तर - पश्चिम',
+        layout3: 'विहीर पश्चिम - दक्षिण',
+        layout4: 'विहीर पूर्व - दक्षिण',
+        layout5: 'दोन्ही दिशा',
 
 //settings
      products: 'प्रोडक्टस',
