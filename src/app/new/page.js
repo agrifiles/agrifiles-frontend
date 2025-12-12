@@ -13,11 +13,27 @@ import { STANDARD_LAYOUTS } from '@/lib/standardLayouts';
 
 function NewFilePageContent() {
   // ---------- Localization ----------
-  const { t, lang } = useContext(LangContext);
+  const { t, lang, toggleLang } = useContext(LangContext);
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [savedFileId, setSavedFileId] = useState(null); // store returned id
   const [saving, setSaving] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Auto-switch to Marathi when on file creation/update page
+  useEffect(() => {
+    setMounted(true);
+    if (lang !== 'mr') {
+      toggleLang();
+    }
+  }, []); // Run only on mount
+
+  // Ensure Marathi is set when language changes
+  useEffect(() => {
+    if (mounted && lang !== 'mr') {
+      toggleLang();
+    }
+  }, [lang, mounted, toggleLang]);
 
   
   const [form, setForm] = useState({
