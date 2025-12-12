@@ -74,7 +74,7 @@ export default function FarmMapCanvas({ shapes }) {
       minY = Math.min(minY, s.y);
       maxX = Math.max(maxX, s.x + s.width);
       maxY = Math.max(maxY, s.y + s.height);
-    } else if (s.type === 'main_pipe' || s.type === 'lateral_pipe') {
+    } else if (s.type === 'main_pipe' || s.type === 'lateral_pipe' || s.type === 'sub_pipe') {
       for (let i = 0; i < s.points.length; i += 2) {
         minX = Math.min(minX, s.points[i]);
         maxX = Math.max(maxX, s.points[i]);
@@ -120,6 +120,7 @@ export default function FarmMapCanvas({ shapes }) {
     >
       <Layer x={offsetX} y={offsetY} scaleX={scale} scaleY={scale}>
         {shapes.map((s) => {
+          // All shapes are now in standard format (no nested standardGroup)
           if (s.type === 'well')
             return (
               <Circle
@@ -130,6 +131,7 @@ export default function FarmMapCanvas({ shapes }) {
                 stroke="blue"
                 strokeWidth={2}
                 fillEnabled={false}
+                rotation={s.rotation || 0}
               />
             );
 
@@ -144,6 +146,7 @@ export default function FarmMapCanvas({ shapes }) {
                 stroke="green"
                 strokeWidth={2}
                 fillEnabled={false}
+                rotation={s.rotation || 0}
               />
             );
 
@@ -161,6 +164,7 @@ export default function FarmMapCanvas({ shapes }) {
                 stroke={stroke}
                 strokeWidth={strokeWidth}
                 dash={dash}
+                rotation={s.rotation || 0}
               />
             );
           }

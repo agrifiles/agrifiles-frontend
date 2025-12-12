@@ -9,6 +9,7 @@ import { getCurrentUserId, getCurrentUser, API_BASE } from '@/lib/utils';
 import Loader from '@/components/Loader';
 import { districtsEn, districtsMr } from '@/lib/districts';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { STANDARD_LAYOUTS } from '@/lib/standardLayouts';
 
 function NewFilePageContent() {
   // ---------- Localization ----------
@@ -126,6 +127,7 @@ function NewFilePageContent() {
   const [tool, setTool] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentLine, setCurrentLine] = useState(null);
+  const [mode, setMode] = useState('draw'); // 'draw' or 'standard'
   const [companies, setCompanies] = useState([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   
@@ -287,7 +289,21 @@ function NewFilePageContent() {
             parsed = [];
           }
 
+          // All shapes are now in standard format (no more separate standardGroup)
+          console.log('=== LOAD FILE DEBUG INFO ===');
+          console.log('Total parsed shapes:', parsed.length);
+          console.log('Shapes loaded:');
+          parsed.forEach((s, idx) => {
+            console.log(`  ${idx}: type=${s.type}, id=${s.id}`,
+              s.type === 'main_pipe' || s.type === 'sub_pipe' || s.type === 'lateral_pipe'
+                ? `points=${JSON.stringify(s.points)}`
+                : `x=${s.x}, y=${s.y}`);
+          });
+          console.log('=== END LOAD DEBUG INFO ===');
+          
           setShapes(Array.isArray(parsed) ? parsed : []);
+          // standardGroup no longer used - everything is flattened
+          setStandardGroup(null);
         } catch (e) {
           console.warn('Failed to parse shapes_json for file', id, e);
           setShapes([]);
@@ -382,18 +398,36 @@ const submitForm = async (e) => {
 
 // console.log("owner", owner_id)
 
+  // Function to flatten standardGroup by applying transformations to each shape
+  // SIMPLIFIED: Store standard layout as is (no coordinate transformation)
+  // Just store the template name, direction/rotation, and position
+  const flattenStandardGroup = (group) => {
+    if (!group || !group.shapes || !Array.isArray(group.shapes)) {
+      return [];
+    }
+    
+    // For standard layouts, we just save the shapes as they are
+    // The rendering will apply rotation when displaying
+    console.log('=== SAVING STANDARD LAYOUT ===');
+    console.log('Layout will be rendered with rotation:', group.rotation, 'degrees');
+    console.log('Total shapes:', group.shapes.length);
+    
+    // Return shapes with rotation included (renderer will handle it)
+    return group.shapes.map(s => ({
+      ...s,
+      rotation: (s.rotation || 0) + (group.rotation || 0)
+    }));
+  };
+
+  // Flatten standardGroup if it exists, otherwise use regular shapes
+  const shapesToSave = standardGroup ? flattenStandardGroup(standardGroup) : shapes;
+
   const payload = {
     owner_id,                         
     title: `${form.farmerName || 'File'} - ${form.fileDate}`,
     form,
-    shapes
+    shapes: shapesToSave
   };
-
-  // const payload = {
-  //   title: `${form.farmerName || 'File'} - ${form.fileDate}`,
-  //   form,
-  //   shapes
-  // };
 
   try {
     setSaving(true);
@@ -458,8 +492,8 @@ const submitForm = async (e) => {
       type,
       x: 120,
       y: 100,
-      width: 100,
-      height: 80,
+      width: type === 'valve_image' || type === 'filter_image' || type === 'flush_image' ? 60 : 100,
+      height: type === 'valve_image' || type === 'filter_image' || type === 'flush_image' ? 60 : 80,
       radius: 40,
       rotation: 0,
     };
@@ -563,8 +597,8 @@ const submitForm = async (e) => {
               ...s,
               x: node.x(),
               y: node.y(),
-              width: Math.max(5, node.width() * scaleX),
-              height: Math.max(5, node.height() * scaleY),
+              width: node.width() * scaleX,
+              height: node.height() * scaleY,
               rotation: node.rotation(),
             };
           }
@@ -609,92 +643,6 @@ const submitForm = async (e) => {
   return (
     <div className="min-h-screen flex flex-col items-center bg-gray-50 py-5 px-4 relative">
       {saving && <Loader fullScreen message={savedFileId ? (t.updating || 'Updating...') : (t.savingFile || 'Saving file...')} />}
-      {/* Rotate 90° button for standard layout */}
-      {selectedId === 'standard-layout-group' && standardGroup && (
-        <div style={{
-          position: 'fixed',
-          right: 0,
-          top: '50%',
-          transform: 'translateY(-50%) rotate(-90deg)',
-          zIndex: 1000,
-        }}>
-          <button
-            type="button"
-            style={{
-              background: '#0ea5e9',
-              color: 'white',
-              borderRadius: '8px 8px 0 0',
-              padding: '16px 24px',
-              fontWeight: 700,
-              fontSize: '1.1rem',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-              letterSpacing: '1px',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-            onClick={() => {
-              // Cycle through: normal -> flipX -> flipY -> flipXY -> normal ...
-              setStandardGroup(g => {
-                const scale = g.scale || { x: 0.6, y: 0.6 };
-                // Determine current flip state
-                const isX = Math.sign(scale.x) === -1;
-                const isY = Math.sign(scale.y) === -1;
-                let nextScale;
-                if (!isX && !isY) {
-                  // normal -> flipX
-                  nextScale = { x: -scale.x, y: scale.y };
-                } else if (isX && !isY) {
-                  // flipX -> flipY
-                  nextScale = { x: scale.x, y: -scale.y };
-                } else if (isX && isY) {
-                  // flipXY -> normal
-                  nextScale = { x: Math.abs(scale.x), y: Math.abs(scale.y) };
-                } else {
-                  // flipY -> flipXY
-                  nextScale = { x: -scale.x, y: scale.y };
-                }
-
-                // Calculate bounding box width/height for offset
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                for (const s of g.shapes) {
-                  if (s.type === 'main_pipe' || s.type === 'sub_pipe' || s.type === 'lateral_pipe') {
-                    const [x1, y1, x2, y2] = s.points;
-                    minX = Math.min(minX, x1, x2);
-                    minY = Math.min(minY, y1, y2);
-                    maxX = Math.max(maxX, x1, x2);
-                    maxY = Math.max(maxY, y1, y2);
-                  } else if (s.type === 'well' || s.type === 'valve_image' || s.type === 'filter_image' || s.type === 'flush_image') {
-                    minX = Math.min(minX, s.x - (s.radius || 0));
-                    minY = Math.min(minY, s.y - (s.radius || 0));
-                    maxX = Math.max(maxX, s.x + (s.radius || s.width || 0));
-                    maxY = Math.max(maxY, s.y + (s.radius || s.height || 0));
-                  } else if (s.type === 'border') {
-                    minX = Math.min(minX, s.x);
-                    minY = Math.min(minY, s.y);
-                    maxX = Math.max(maxX, s.x + s.width);
-                    maxY = Math.max(maxY, s.y + s.height);
-                  }
-                }
-                const bboxWidth = maxX - minX;
-                const bboxHeight = maxY - minY;
-                // Offset logic: center for all flips
-                let offsetX = 0, offsetY = 0;
-                if (Math.sign(nextScale.x) === -1) offsetX = bboxWidth;
-                if (Math.sign(nextScale.y) === -1) offsetY = bboxHeight;
-                return {
-                  ...g,
-                  scale: nextScale,
-                  x: 100,
-                  y: 90,
-                  offset: { x: offsetX, y: offsetY }
-                };
-              });
-            }}
-          >
-            Flip
-          </button>
-        </div>
-      )}
 
       <form
         onSubmit={submitForm}
@@ -952,11 +900,55 @@ const submitForm = async (e) => {
     <div className="flex flex-col items-center p-1">
       <h2 className="text-2xl font-bold text-cyan-700 mb-4">{t.graphTitle}</h2>
 
-
+      {/* Mode Selection Radio Buttons */}
+      <div className="flex gap-6 mb-6 p-4 bg-gray-100 rounded-lg">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="mode"
+            value="draw"
+            checked={mode === 'draw'}
+            onChange={(e) => {
+              // If switching from standard to draw and standard layout exists, ask for confirmation
+              if (mode === 'standard' && standardGroup) {
+                const confirmed = window.confirm(t.confirmStandardToDraw);
+                if (!confirmed) return;
+              }
+              setMode('draw');
+              setStandardGroup(null);
+              setSelectedId(null);
+            }}
+            className="w-4 h-4"
+          />
+          <span className="font-semibold">{t.drawMode || 'Draw Mode'}</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="mode"
+            value="standard"
+            checked={mode === 'standard'}
+            onChange={(e) => {
+              // If switching from draw to standard and shapes exist, ask for confirmation
+              if (mode === 'draw' && shapes.length > 0) {
+                const confirmed = window.confirm(t.confirmDrawToStandard);
+                if (!confirmed) return;
+              }
+              setMode('standard');
+              setShapes([]);
+              setSelectedId(null);
+              setTool(null);
+            }}
+            className="w-4 h-4"
+          />
+          <span className="font-semibold">{t.standardLayout || 'Standard Layout'}</span>
+        </label>
+      </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap justify-center gap-2 mb-4">
-        {/* Equipment Buttons */}
+        {/* Equipment Buttons - Only show in Draw Mode */}
+        {mode === 'draw' && (
         <div className="flex gap-2 flex-wrap">
           <button type="button" onClick={() => addShape('well')} className="px-3 py-1 border-2 border-blue-500 text-blue-500 bg-transparent rounded transition-colors duration-150 hover:bg-blue-500 hover:text-white">{t.well}</button>
           <button type="button" onClick={() => addShape('main_pipe')} className="px-3 py-1 border-2 border-orange-500 text-orange-500 bg-transparent rounded transition-colors duration-150 hover:bg-orange-500 hover:text-white">{t.mainPipe}</button>
@@ -967,83 +959,111 @@ const submitForm = async (e) => {
           <button type="button" onClick={() => addShape('filter_image')} className="px-3 py-1 border-2 border-teal-600 text-teal-600 bg-transparent rounded transition-colors duration-150 hover:bg-teal-600 hover:text-white">{t.filter}</button>
           <button type="button" onClick={() => addShape('flush_image')} className="px-3 py-1 border-2 border-sky-600 text-sky-600 bg-transparent rounded transition-colors duration-150 hover:bg-sky-600 hover:text-white">{t.flush}</button>
 
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-2 border-l-3 pl-2">
+          <button type="button" onClick={handleDelete} className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors duration-150">{t.delete}</button>
           <button
             type="button"
-            style={{ minWidth: 120, fontWeight: 600 }}
             onClick={() => {
-              setShapes([]);
-              // Calculate bounding box center for offset
-              const shapes = [
-                  {"id":"shape_1765425727070","dash":[],"type":"main_pipe","points":[223.0138060577043,21.909464481983967,223.0138060577043,21.909464481983967],"stroke":"orange","strokeWidth":3},
-                  {"id":"shape_1765425730603","dash":[],"type":"main_pipe","points":[240.0138982891075,43.910210133852,240.0138982891075,43.910210133852],"stroke":"orange","strokeWidth":3},
-                  {"id":"shape_1765425732549","dash":[],"type":"main_pipe","points":[182.0135836172614,208.91580252286218,182.0135836172614,208.91580252286218],"stroke":"orange","strokeWidth":3},
-                  {"id":"shape_1765425735219","dash":[],"type":"sub_pipe","points":[299.01421838633024,80.91146418472094,299.01421838633024,80.91146418472094],"stroke":"#166534","strokeWidth":3},
-                  {"id":"shape_1765425788296","dash":[],"type":"sub_pipe","points":[488.2087644247202,87.36117618732442,488.2087644247202,87.36117618732442],"stroke":"#166534","strokeWidth":3},
-                  {"x":322.04659850432523,"y":34.045387560613406,"id":"shape_1765502985561","type":"well","width":100,"height":80,"radius":23.460110591426545,"rotation":0},
-                  {"id":"shape_1765503015150","dash":[],"type":"main_pipe","points":[322.6839991126845,55.73055062791121,324.6839989770508,390.73893106720953],"stroke":"orange","strokeWidth":3},
-                  {"x":292.9999882676874,"y":60.999024366768325,"id":"shape_1765503028777","type":"filter_image","width":33.58604487187866,"height":26.86883589750293,"radius":40,"rotation":0},
-                  {"x":290.97480837574466,"y":90.99977485386971,"id":"shape_1765503046716","type":"valve_image","width":42.922628440788905,"height":34.33810275263108,"radius":40,"rotation":0},
-                  {"id":"shape_1765503098496","dash":[],"type":"sub_pipe","points":[796.6839669675044,147.73285212168867,319.683999316135,145.73280208921523],"stroke":"#166534","strokeWidth":3},
-                  {"id":"shape_1765503108901","dash":[10,5],"type":"lateral_pipe","points":[798.6839668318706,201.73420299847106,324.6839989770508,199.73415296599765],"stroke":"blue","strokeWidth":2},
-                  {"id":"shape_1765503114867","dash":[10,5],"type":"lateral_pipe","points":[802.6839665606034,249.73540377783323,323.6839990448677,247.7353537453598],"stroke":"blue","strokeWidth":2},
-                  {"id":"shape_1765503125542","dash":[10,5],"type":"lateral_pipe","points":[801.6839666284202,298.7366295734321,325.683998909234,300.7366796059055],"stroke":"blue","strokeWidth":2},
-                  {"id":"shape_1765503133626","dash":[10,5],"type":"lateral_pipe","points":[798.6839668318706,351.7379554339778,325.683998909234,351.7379554339778],"stroke":"blue","strokeWidth":2},
-                  {"x":304.9999874538853,"y":372.00680441638553,"id":"shape_1765503140616","type":"flush_image","width":36.39995246614249,"height":29.119961972913995,"radius":40,"rotation":0},
-                  {"x":230.15067788072272,"y":5.9430955345317305,"id":"shape_1765503153464","type":"border","width":589.0839165312457,"height":401.9874788818042,"radius":40,"rotation":0}
-              ];
-              // Calculate bounding box
-              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-              for (const s of shapes) {
-                if (s.type === 'main_pipe' || s.type === 'sub_pipe' || s.type === 'lateral_pipe') {
-                  const [x1, y1, x2, y2] = s.points;
-                  minX = Math.min(minX, x1, x2);
-                  minY = Math.min(minY, y1, y2);
-                  maxX = Math.max(maxX, x1, x2);
-                  maxY = Math.max(maxY, y1, y2);
-                } else if (s.type === 'well' || s.type === 'valve_image' || s.type === 'filter_image' || s.type === 'flush_image') {
-                  minX = Math.min(minX, s.x - (s.radius || 0));
-                  minY = Math.min(minY, s.y - (s.radius || 0));
-                  maxX = Math.max(maxX, s.x + (s.radius || s.width || 0));
-                  maxY = Math.max(maxY, s.y + (s.radius || s.height || 0));
-                } else if (s.type === 'border') {
-                  minX = Math.min(minX, s.x);
-                  minY = Math.min(minY, s.y);
-                  maxX = Math.max(maxX, s.x + s.width);
-                  maxY = Math.max(maxY, s.y + s.height);
-                }
+              if (window.confirm(t.confirmClearAll)) {
+                setShapes([]);
+                setSelectedId(null);
               }
-              // Hardcode initial position
+            }}
+            className="px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors duration-150 ml-2"
+          >
+            {t.clearAll}
+          </button>
+        </div>
+        )}
+
+        {/* Action Buttons - Only show in Standard Layout Mode */}
+        {mode === 'standard' && (
+        <div className="flex gap-2 border-l-3 pl-2 flex-wrap">
+          {/* 4 Standard Layout Buttons */}
+          <button
+            type="button"
+            onClick={() => {
+              const layout = STANDARD_LAYOUTS['layout_1_vertical_left'];
+              setStandardGroup({
+                id: 'standard-layout-group',
+                rotation: 0,
+                x: 60,
+                y: 35,
+                shapes: layout.shapes
+              });
+              setSelectedId('standard-layout-group');
+            }}
+            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+            title={STANDARD_LAYOUTS['layout_1_vertical_left'].description}
+          >
+            Layout 1: Vertical
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => {
+              const layout = STANDARD_LAYOUTS['layout_2_horizontal_bottom'];
               setStandardGroup({
                 id: 'standard-layout-group',
                 rotation: 0,
                 x: 100,
                 y: 90,
-                offset: { x: 0, y: 0 },
-                shapes
+                shapes: layout.shapes
               });
               setSelectedId('standard-layout-group');
             }}
-            //     ]
-            //   });
-            //   setSelectedId('standard-layout-group');
-            // }}
-            className="px-3 py-1 bg-gray-700 text-white rounded"
+            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+            title={STANDARD_LAYOUTS['layout_2_horizontal_bottom'].description}
           >
-            Standard Layout
+            Layout 2: Horizontal
           </button>
-          <button type="button" onClick={handleDelete} className="px-3 py-1 bg-red-600 text-white rounded">{t.delete}</button>
+          
+          <button
+            type="button"
+            onClick={() => {
+              const layout = STANDARD_LAYOUTS['layout_3_u_shaped'];
+              setStandardGroup({
+                id: 'standard-layout-group',
+                rotation: 0,
+                x: 100,
+                y: 90,
+                shapes: layout.shapes
+              });
+              setSelectedId('standard-layout-group');
+            }}
+            className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+            title={STANDARD_LAYOUTS['layout_3_u_shaped'].description}
+          >
+            Layout 3: U-Shaped
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => {
+              const layout = STANDARD_LAYOUTS['layout_4_grid_pattern'];
+              setStandardGroup({
+                id: 'standard-layout-group',
+                rotation: 0,
+                x: 100,
+                y: 90,
+                shapes: layout.shapes
+              });
+              setSelectedId('standard-layout-group');
+            }}
+            className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+            title={STANDARD_LAYOUTS['layout_4_grid_pattern'].description}
+          >
+            Layout 4: Grid
+          </button>
         </div>
+        )}
       </div>
 
       {/* Canvas */}
-      <Stage
-        width={900}
-        height={416}
-        ref={stageRef}
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <Stage
+          width={900}
+          height={416}
+          ref={stageRef}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1068,10 +1088,52 @@ const submitForm = async (e) => {
               x={standardGroup.x}
               y={standardGroup.y}
               rotation={standardGroup.rotation}
-              scale={standardGroup.scale || { x: 0.6, y: 0.6 }}
+              scale={standardGroup.scale || { x: 1, y: 1 }}
               offset={standardGroup.offset || { x: 0, y: 0 }}
               draggable
               onClick={() => setSelectedId(standardGroup.id)}
+              onDragEnd={(e) => {
+                const newX = e.target.x();
+                const newY = e.target.y();
+                console.log('Standard layout group dragged:');
+                console.log('  New position: x=' + newX + ', y=' + newY);
+                console.log('  Scale:', standardGroup.scale);
+                console.log('  Rotation:', e.target.rotation());
+                setStandardGroup(prev => ({
+                  ...prev,
+                  x: newX,
+                  y: newY,
+                }));
+              }}
+              onTransformEnd={(e) => {
+                const node = e.target;
+                const newX = node.x();
+                const newY = node.y();
+                const newRotation = node.rotation();
+                const newScaleX = node.scaleX();
+                const newScaleY = node.scaleY();
+                
+                console.log('Standard layout group transformed (resize/rotate):');
+                console.log('  New position: x=' + newX + ', y=' + newY);
+                console.log('  New rotation:', newRotation);
+                console.log('  New scale: x=' + newScaleX + ', y=' + newScaleY);
+                console.log('  Previous scale:', standardGroup.scale);
+                
+                setStandardGroup(prev => ({
+                  ...prev,
+                  x: newX,
+                  y: newY,
+                  rotation: newRotation,
+                  scale: {
+                    x: newScaleX,
+                    y: newScaleY,
+                  },
+                }));
+                
+                // Reset scale to 1 to avoid compounding
+                node.scaleX(1);
+                node.scaleY(1);
+              }}
               ref={node => {
                 if (node && selectedId === standardGroup.id && trRef.current) {
                   trRef.current.nodes([node]);
@@ -1425,10 +1487,13 @@ const submitForm = async (e) => {
             anchorSize={8}
             borderStroke="black"
             borderDash={[4, 4]}
-            enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+            enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "middle-left", "middle-right"]}
             boundBoxFunc={(oldBox, newBox) => {
-              // limit resize to minimum size
-              if (newBox.width < 50 || newBox.height < 50) {
+              // Get the selected shape
+              const selectedShape = shapes.find(s => s.id === selectedId);
+              // For images, allow very small sizes (min 1px); for other shapes, require minimum 50px
+              const minSize = selectedShape && (selectedShape.type === 'valve_image' || selectedShape.type === 'filter_image' || selectedShape.type === 'flush_image') ? 1 : 50;
+              if (newBox.width < minSize || newBox.height < minSize) {
                 return oldBox;
               }
               return newBox;
@@ -1436,6 +1501,7 @@ const submitForm = async (e) => {
           />
         </Layer>
       </Stage>
+      </div>
 {/* 
       <button
         onClick={() => console.log('Exported Layout:', shapes)}
@@ -1675,7 +1741,7 @@ const submitForm = async (e) => {
       </form>
     </div>
   );
- 
+}
 
 // return (
 //     <div className="min-h-screen flex flex-col items-center bg-gray-50 py-5 px-4">
@@ -1934,8 +2000,6 @@ const submitForm = async (e) => {
 //       </form>
 //     </div>
 //   )
-
-}
 
 export default function NewFilePage() {
   return (

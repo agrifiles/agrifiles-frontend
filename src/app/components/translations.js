@@ -120,6 +120,10 @@ place: "Place",
     //graph
 
         graphTitle: 'Farm Layout Designer',
+        drawMode: 'Draw Mode',
+        standardLayout: 'Standard Layout',
+        confirmStandardToDraw: 'You have a standard layout. Switching to Draw Mode will clear it. Continue?',
+        confirmDrawToStandard: 'You have drawn shapes. Switching to Standard Layout Mode will clear them. Continue?',
         well: 'Well',
         mainPipe: 'Main Pipe',
         lateralPipe: 'Lateral Pipe',
@@ -128,6 +132,8 @@ place: "Place",
         filter: 'Screen Filter',
         flush: 'Flush Valve',
         delete: 'Delete',
+        clearAll: 'Clear All',
+        confirmClearAll: 'This will clear all content from the canvas. Continue?',
         export: 'Export Data (Console)',
 
 
@@ -322,6 +328,10 @@ place: "ठिकाण",
     //graph
 
             graphTitle: 'शेती आराखडा रेखाचित्र',
+            drawMode: 'नवीन मोड',
+            standardLayout: 'आधीचे सेव लेआउट',
+            confirmStandardToDraw: 'तुमच्याकडे एक रेखाचित्र सेव आहे. स्विच केल्याने ते साफ होईल. सुरू ठेवायचे?',
+            confirmDrawToStandard: 'तुमच्याकडे एक नवीन रेखाचित्र आहे. स्विच केल्याने ते साफ होईल. सुरू ठेवायचे?',
         well: 'विहीर',
         mainPipe: 'मुख्य नळी',
         lateralPipe: 'लॅटरल नळी',
@@ -330,6 +340,8 @@ place: "ठिकाण",
         filter: 'स्क्रीन फिल्टर',
         flush: 'फ्लश व्हॉल्व',
         delete: 'काढून टाका',
+        clearAll: 'सर्व साफ करा',
+        confirmClearAll: 'हे कॅनव्हासमधील सर्व सामग्री साफ करेल. सुरू ठेवायचे?',
         export: 'माहिती निर्यात करा (कन्सोल)',
 
 //settings
