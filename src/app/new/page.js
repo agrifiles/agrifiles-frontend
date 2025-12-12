@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useContext} from 'react';
 import { LangContext } from '../layout';
-import { Stage, Layer, Rect, Circle, Line, Image, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Circle, Line, Image, Transformer, Arrow, Group } from 'react-konva';
 import useImage from 'use-image';
 import { useRouter, useSearchParams } from 'next/navigation'; // optional navigation
 import { getCurrentUserId, getCurrentUser, API_BASE } from '@/lib/utils';
@@ -121,6 +121,7 @@ function NewFilePageContent() {
   const [flushImg] = useImage('/flush_valve.png');
 
   const [shapes, setShapes] = useState([]);
+  const [standardGroup, setStandardGroup] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [tool, setTool] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -445,6 +446,8 @@ const submitForm = async (e) => {
 };
  
   const addShape = (type) => {
+    // If standard layout is present, clear it before drawing any new shape
+    setStandardGroup(null);
     if (type === 'main_pipe' || type === 'lateral_pipe' || type === 'sub_pipe') {
       setTool(type);
       return;
@@ -526,7 +529,24 @@ const submitForm = async (e) => {
   // ---------- Transform / Drag ----------
   const handleDragEnd = (id, e) => {
     const { x, y } = e.target.position();
-    setShapes((prev) => prev.map((s) => (s.id === id ? { ...s, x, y } : s)));
+    setShapes((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        if (
+          s.type === 'main_pipe' ||
+          s.type === 'lateral_pipe' ||
+          s.type === 'sub_pipe'
+        ) {
+          // Move both points by the group delta
+          const [x0, y0, x1, y1] = s.points;
+          const dx = x - x0;
+          const dy = y - y0;
+          return { ...s, points: [x0 + dx, y0 + dy, x1 + dx, y1 + dy] };
+        }
+        // For other shapes, just update x/y
+        return { ...s, x, y };
+      })
+    );
   };
 
   const handleTransformEnd = (id, node) => {
@@ -575,7 +595,11 @@ const submitForm = async (e) => {
     const transformer = trRef.current;
     if (!transformer) return;
     const stage = stageRef.current;
-    const selectedNode = stage.findOne(`#${selectedId}`);
+    // Try to find a Group first (for pipes), else fallback to any node with the id
+    let selectedNode = stage.findOne(`Group#${selectedId}`);
+    if (!selectedNode) {
+      selectedNode = stage.findOne(`#${selectedId}`);
+    }
     transformer.nodes(selectedNode ? [selectedNode] : []);
     transformer.getLayer().batchDraw();
   }, [selectedId, shapes]);
@@ -583,8 +607,95 @@ const submitForm = async (e) => {
   const isEditing = Boolean(savedFileId || searchParams?.get?.('id'));
 
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-50 py-5 px-4">
+    <div className="min-h-screen flex flex-col items-center bg-gray-50 py-5 px-4 relative">
       {saving && <Loader fullScreen message={savedFileId ? (t.updating || 'Updating...') : (t.savingFile || 'Saving file...')} />}
+      {/* Rotate 90° button for standard layout */}
+      {selectedId === 'standard-layout-group' && standardGroup && (
+        <div style={{
+          position: 'fixed',
+          right: 0,
+          top: '50%',
+          transform: 'translateY(-50%) rotate(-90deg)',
+          zIndex: 1000,
+        }}>
+          <button
+            type="button"
+            style={{
+              background: '#0ea5e9',
+              color: 'white',
+              borderRadius: '8px 8px 0 0',
+              padding: '16px 24px',
+              fontWeight: 700,
+              fontSize: '1.1rem',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+              letterSpacing: '1px',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              // Cycle through: normal -> flipX -> flipY -> flipXY -> normal ...
+              setStandardGroup(g => {
+                const scale = g.scale || { x: 0.6, y: 0.6 };
+                // Determine current flip state
+                const isX = Math.sign(scale.x) === -1;
+                const isY = Math.sign(scale.y) === -1;
+                let nextScale;
+                if (!isX && !isY) {
+                  // normal -> flipX
+                  nextScale = { x: -scale.x, y: scale.y };
+                } else if (isX && !isY) {
+                  // flipX -> flipY
+                  nextScale = { x: scale.x, y: -scale.y };
+                } else if (isX && isY) {
+                  // flipXY -> normal
+                  nextScale = { x: Math.abs(scale.x), y: Math.abs(scale.y) };
+                } else {
+                  // flipY -> flipXY
+                  nextScale = { x: -scale.x, y: scale.y };
+                }
+
+                // Calculate bounding box width/height for offset
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const s of g.shapes) {
+                  if (s.type === 'main_pipe' || s.type === 'sub_pipe' || s.type === 'lateral_pipe') {
+                    const [x1, y1, x2, y2] = s.points;
+                    minX = Math.min(minX, x1, x2);
+                    minY = Math.min(minY, y1, y2);
+                    maxX = Math.max(maxX, x1, x2);
+                    maxY = Math.max(maxY, y1, y2);
+                  } else if (s.type === 'well' || s.type === 'valve_image' || s.type === 'filter_image' || s.type === 'flush_image') {
+                    minX = Math.min(minX, s.x - (s.radius || 0));
+                    minY = Math.min(minY, s.y - (s.radius || 0));
+                    maxX = Math.max(maxX, s.x + (s.radius || s.width || 0));
+                    maxY = Math.max(maxY, s.y + (s.radius || s.height || 0));
+                  } else if (s.type === 'border') {
+                    minX = Math.min(minX, s.x);
+                    minY = Math.min(minY, s.y);
+                    maxX = Math.max(maxX, s.x + s.width);
+                    maxY = Math.max(maxY, s.y + s.height);
+                  }
+                }
+                const bboxWidth = maxX - minX;
+                const bboxHeight = maxY - minY;
+                // Offset logic: center for all flips
+                let offsetX = 0, offsetY = 0;
+                if (Math.sign(nextScale.x) === -1) offsetX = bboxWidth;
+                if (Math.sign(nextScale.y) === -1) offsetY = bboxHeight;
+                return {
+                  ...g,
+                  scale: nextScale,
+                  x: 100,
+                  y: 90,
+                  offset: { x: offsetX, y: offsetY }
+                };
+              });
+            }}
+          >
+            Flip
+          </button>
+        </div>
+      )}
+
       <form
         onSubmit={submitForm}
         className="w-full max-w-6xl bg-white shadow-lg rounded-lg p-8 space-y-6"
@@ -838,14 +949,15 @@ const submitForm = async (e) => {
 
          {step === 3 && (
 
-
     <div className="flex flex-col items-center p-1">
       <h2 className="text-2xl font-bold text-cyan-700 mb-4">{t.graphTitle}</h2>
+
+
 
       {/* Toolbar */}
       <div className="flex flex-wrap justify-center gap-2 mb-4">
         {/* Equipment Buttons */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button type="button" onClick={() => addShape('well')} className="px-3 py-1 border-2 border-blue-500 text-blue-500 bg-transparent rounded transition-colors duration-150 hover:bg-blue-500 hover:text-white">{t.well}</button>
           <button type="button" onClick={() => addShape('main_pipe')} className="px-3 py-1 border-2 border-orange-500 text-orange-500 bg-transparent rounded transition-colors duration-150 hover:bg-orange-500 hover:text-white">{t.mainPipe}</button>
           <button type="button" onClick={() => addShape('sub_pipe')} className="px-3 py-1 border-2 border-green-800 text-white bg-green-800 rounded transition-colors duration-150 hover:bg-green-900">Sub Pipe</button>
@@ -854,9 +966,75 @@ const submitForm = async (e) => {
           <button type="button" onClick={() => addShape('valve_image')} className="px-3 py-1 border-2 border-purple-500 text-purple-500 bg-transparent rounded transition-colors duration-150 hover:bg-purple-500 hover:text-white">{t.valve}</button>
           <button type="button" onClick={() => addShape('filter_image')} className="px-3 py-1 border-2 border-teal-600 text-teal-600 bg-transparent rounded transition-colors duration-150 hover:bg-teal-600 hover:text-white">{t.filter}</button>
           <button type="button" onClick={() => addShape('flush_image')} className="px-3 py-1 border-2 border-sky-600 text-sky-600 bg-transparent rounded transition-colors duration-150 hover:bg-sky-600 hover:text-white">{t.flush}</button>
+
         </div>
+
         {/* Action Buttons */}
         <div className="flex gap-2 border-l-3 pl-2">
+          <button
+            type="button"
+            style={{ minWidth: 120, fontWeight: 600 }}
+            onClick={() => {
+              setShapes([]);
+              // Calculate bounding box center for offset
+              const shapes = [
+                  {"id":"shape_1765425727070","dash":[],"type":"main_pipe","points":[223.0138060577043,21.909464481983967,223.0138060577043,21.909464481983967],"stroke":"orange","strokeWidth":3},
+                  {"id":"shape_1765425730603","dash":[],"type":"main_pipe","points":[240.0138982891075,43.910210133852,240.0138982891075,43.910210133852],"stroke":"orange","strokeWidth":3},
+                  {"id":"shape_1765425732549","dash":[],"type":"main_pipe","points":[182.0135836172614,208.91580252286218,182.0135836172614,208.91580252286218],"stroke":"orange","strokeWidth":3},
+                  {"id":"shape_1765425735219","dash":[],"type":"sub_pipe","points":[299.01421838633024,80.91146418472094,299.01421838633024,80.91146418472094],"stroke":"#166534","strokeWidth":3},
+                  {"id":"shape_1765425788296","dash":[],"type":"sub_pipe","points":[488.2087644247202,87.36117618732442,488.2087644247202,87.36117618732442],"stroke":"#166534","strokeWidth":3},
+                  {"x":322.04659850432523,"y":34.045387560613406,"id":"shape_1765502985561","type":"well","width":100,"height":80,"radius":23.460110591426545,"rotation":0},
+                  {"id":"shape_1765503015150","dash":[],"type":"main_pipe","points":[322.6839991126845,55.73055062791121,324.6839989770508,390.73893106720953],"stroke":"orange","strokeWidth":3},
+                  {"x":292.9999882676874,"y":60.999024366768325,"id":"shape_1765503028777","type":"filter_image","width":33.58604487187866,"height":26.86883589750293,"radius":40,"rotation":0},
+                  {"x":290.97480837574466,"y":90.99977485386971,"id":"shape_1765503046716","type":"valve_image","width":42.922628440788905,"height":34.33810275263108,"radius":40,"rotation":0},
+                  {"id":"shape_1765503098496","dash":[],"type":"sub_pipe","points":[796.6839669675044,147.73285212168867,319.683999316135,145.73280208921523],"stroke":"#166534","strokeWidth":3},
+                  {"id":"shape_1765503108901","dash":[10,5],"type":"lateral_pipe","points":[798.6839668318706,201.73420299847106,324.6839989770508,199.73415296599765],"stroke":"blue","strokeWidth":2},
+                  {"id":"shape_1765503114867","dash":[10,5],"type":"lateral_pipe","points":[802.6839665606034,249.73540377783323,323.6839990448677,247.7353537453598],"stroke":"blue","strokeWidth":2},
+                  {"id":"shape_1765503125542","dash":[10,5],"type":"lateral_pipe","points":[801.6839666284202,298.7366295734321,325.683998909234,300.7366796059055],"stroke":"blue","strokeWidth":2},
+                  {"id":"shape_1765503133626","dash":[10,5],"type":"lateral_pipe","points":[798.6839668318706,351.7379554339778,325.683998909234,351.7379554339778],"stroke":"blue","strokeWidth":2},
+                  {"x":304.9999874538853,"y":372.00680441638553,"id":"shape_1765503140616","type":"flush_image","width":36.39995246614249,"height":29.119961972913995,"radius":40,"rotation":0},
+                  {"x":230.15067788072272,"y":5.9430955345317305,"id":"shape_1765503153464","type":"border","width":589.0839165312457,"height":401.9874788818042,"radius":40,"rotation":0}
+              ];
+              // Calculate bounding box
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const s of shapes) {
+                if (s.type === 'main_pipe' || s.type === 'sub_pipe' || s.type === 'lateral_pipe') {
+                  const [x1, y1, x2, y2] = s.points;
+                  minX = Math.min(minX, x1, x2);
+                  minY = Math.min(minY, y1, y2);
+                  maxX = Math.max(maxX, x1, x2);
+                  maxY = Math.max(maxY, y1, y2);
+                } else if (s.type === 'well' || s.type === 'valve_image' || s.type === 'filter_image' || s.type === 'flush_image') {
+                  minX = Math.min(minX, s.x - (s.radius || 0));
+                  minY = Math.min(minY, s.y - (s.radius || 0));
+                  maxX = Math.max(maxX, s.x + (s.radius || s.width || 0));
+                  maxY = Math.max(maxY, s.y + (s.radius || s.height || 0));
+                } else if (s.type === 'border') {
+                  minX = Math.min(minX, s.x);
+                  minY = Math.min(minY, s.y);
+                  maxX = Math.max(maxX, s.x + s.width);
+                  maxY = Math.max(maxY, s.y + s.height);
+                }
+              }
+              // Hardcode initial position
+              setStandardGroup({
+                id: 'standard-layout-group',
+                rotation: 0,
+                x: 100,
+                y: 90,
+                offset: { x: 0, y: 0 },
+                shapes
+              });
+              setSelectedId('standard-layout-group');
+            }}
+            //     ]
+            //   });
+            //   setSelectedId('standard-layout-group');
+            // }}
+            className="px-3 py-1 bg-gray-700 text-white rounded"
+          >
+            Standard Layout
+          </button>
           <button type="button" onClick={handleDelete} className="px-3 py-1 bg-red-600 text-white rounded">{t.delete}</button>
         </div>
       </div>
@@ -883,10 +1061,203 @@ const submitForm = async (e) => {
         }}
       >
         <Layer>
-          {shapes.map((s) => {
+          {/* Render standard layout group if present */}
+          {standardGroup && (
+            <Group
+              id={standardGroup.id}
+              x={standardGroup.x}
+              y={standardGroup.y}
+              rotation={standardGroup.rotation}
+              scale={standardGroup.scale || { x: 0.6, y: 0.6 }}
+              offset={standardGroup.offset || { x: 0, y: 0 }}
+              draggable
+              onClick={() => setSelectedId(standardGroup.id)}
+              ref={node => {
+                if (node && selectedId === standardGroup.id && trRef.current) {
+                  trRef.current.nodes([node]);
+                }
+              }}
+            >
+              {/* Render all shapes */}
+              {standardGroup.shapes.map((s) => {
+                if (s.type === 'main_pipe' || s.type === 'sub_pipe') {
+                  const [x1, y1, x2, y2] = s.points;
+                  const relPoints = [x1, y1, x2, y2];
+                  return (
+                    <Line
+                      key={s.id}
+                      points={relPoints}
+                      stroke={s.stroke}
+                      strokeWidth={s.strokeWidth}
+                      dash={s.dash}
+                      hitStrokeWidth={20}
+                    />
+                  );
+                }
+                if (s.type === 'lateral_pipe') {
+                  // Render with arrows, matching normal shapes
+                  const [x1, y1, x2, y2] = s.points;
+                  const dash = [10, 5];
+                  const arrowLength = 14;
+                  const arrowWidth = 10;
+                  const dx = x2 - x1;
+                  const dy = y2 - y1;
+                  const len = Math.sqrt(dx * dx + dy * dy);
+                  const offset = arrowLength * (len > 0 ? 1 : 0) / len;
+                  const relPoints = [0, 0, dx, dy];
+                  const sx1 = dx * offset;
+                  const sy1 = dy * offset;
+                  const ex2 = dx - dx * offset;
+                  const ey2 = dy - dy * offset;
+                  return (
+                    <Group key={s.id + '-group'} id={s.id} x={x1} y={y1}>
+                      <Line
+                        key={s.id + '-line'}
+                        points={relPoints}
+                        stroke={s.stroke}
+                        strokeWidth={s.strokeWidth}
+                        dash={dash}
+                        hitStrokeWidth={20}
+                      />
+                      <Arrow
+                        key={s.id + '-arrow-start'}
+                        points={[sx1, sy1, 0, 0]}
+                        pointerLength={arrowLength}
+                        pointerWidth={arrowWidth}
+                        fill={s.stroke}
+                        stroke={s.stroke}
+                        strokeWidth={s.strokeWidth}
+                      />
+                      <Arrow
+                        key={s.id + '-arrow-end'}
+                        points={[ex2, ey2, dx, dy]}
+                        pointerLength={arrowLength}
+                        pointerWidth={arrowWidth}
+                        fill={s.stroke}
+                        stroke={s.stroke}
+                        strokeWidth={s.strokeWidth}
+                      />
+                    </Group>
+                  );
+                }
+                if (s.type === 'well') {
+                  return (
+                    <Circle
+                      key={s.id}
+                      x={s.x}
+                      y={s.y}
+                      radius={s.radius}
+                      stroke="blue"
+                      strokeWidth={2}
+                      fillEnabled={false}
+                    />
+                  );
+                }
+                if (s.type === 'border') {
+                  return (
+                    <Rect
+                      key={s.id}
+                      x={s.x}
+                      y={s.y}
+                      width={s.width}
+                      height={s.height}
+                      stroke="green"
+                      strokeWidth={2}
+                      fillEnabled={false}
+                    />
+                  );
+                }
+                if (s.type === 'valve_image') {
+                  return (
+                    <Image
+                      key={s.id}
+                      x={s.x}
+                      y={s.y}
+                      width={s.width}
+                      height={s.height}
+                      image={valveImg}
+                    />
+                  );
+                }
+                if (s.type === 'filter_image') {
+                  return (
+                    <Image
+                      key={s.id}
+                      x={s.x}
+                      y={s.y}
+                      width={s.width}
+                      height={s.height}
+                      image={filterImg}
+                    />
+                  );
+                }
+                if (s.type === 'flush_image') {
+                  return (
+                    <Image
+                      key={s.id}
+                      x={s.x}
+                      y={s.y}
+                      width={s.width}
+                      height={s.height}
+                      image={flushImg}
+                    />
+                  );
+                }
+                return null;
+              })}
+
+              {/* Calculate bounding box for selection area */}
+              {(() => {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const s of standardGroup.shapes) {
+                  if (s.type === 'main_pipe' || s.type === 'sub_pipe' || s.type === 'lateral_pipe') {
+                    const [x1, y1, x2, y2] = s.points;
+                    minX = Math.min(minX, x1, x2);
+                    minY = Math.min(minY, y1, y2);
+                    maxX = Math.max(maxX, x1, x2);
+                    maxY = Math.max(maxY, y1, y2);
+                  } else if (s.type === 'well' || s.type === 'valve_image' || s.type === 'filter_image' || s.type === 'flush_image') {
+                    minX = Math.min(minX, s.x - (s.radius || 0));
+                    minY = Math.min(minY, s.y - (s.radius || 0));
+                    maxX = Math.max(maxX, s.x + (s.radius || s.width || 0));
+                    maxY = Math.max(maxY, s.y + (s.radius || s.height || 0));
+                  } else if (s.type === 'border') {
+                    minX = Math.min(minX, s.x);
+                    minY = Math.min(minY, s.y);
+                    maxX = Math.max(maxX, s.x + s.width);
+                    maxY = Math.max(maxY, s.y + s.height);
+                  }
+                }
+                if (minX === Infinity) return null;
+                return (
+                  <Rect
+                    x={minX}
+                    y={minY}
+                    width={maxX - minX}
+                    height={maxY - minY}
+                    fill="rgba(0,0,0,0)"
+                    listening={true}
+                    onClick={() => setSelectedId(standardGroup.id)}
+                    onTap={() => setSelectedId(standardGroup.id)}
+                  />
+                );
+              })()}
+            </Group>
+          )}
+          {/* Render normal shapes if not in standard layout mode */}
+          {!standardGroup && shapes.map((s) => {
             const common = {
               id: s.id,
-              draggable: !s.type.includes('pipe'),
+              draggable: (
+                s.type === 'main_pipe' ||
+                s.type === 'sub_pipe' ||
+                s.type === 'lateral_pipe' ||
+                s.type === 'well' ||
+                s.type === 'border' ||
+                s.type === 'valve_image' ||
+                s.type === 'filter_image' ||
+                s.type === 'flush_image'
+              ),
               onClick: () => setSelectedId(s.id),
               onDragEnd: (e) => handleDragEnd(s.id, e),
               onTransformEnd: (e) => handleTransformEnd(s.id, e.target),
@@ -922,17 +1293,89 @@ const submitForm = async (e) => {
                 />
               );
 
-            if (s.type === 'main_pipe' || s.type === 'lateral_pipe' || s.type === 'sub_pipe')
+            if (s.type === 'main_pipe' || s.type === 'sub_pipe') {
+              // Wrap in Group for proper dragging
+              // Calculate group x/y as the first point, and points relative to that
+              const [x1, y1, x2, y2] = s.points;
+              const relPoints = [0, 0, x2 - x1, y2 - y1];
               return (
-                <Line
-                  key={s.id}
-                  {...common}
-                  points={s.points}
-                  stroke={s.stroke}
-                  strokeWidth={s.strokeWidth}
-                  dash={s.dash}
-                />
+                <Group
+                  key={s.id + '-group'}
+                  id={s.id}
+                  x={x1}
+                  y={y1}
+                  draggable={true}
+                  onClick={() => setSelectedId(s.id)}
+                  onDragEnd={(e) => handleDragEnd(s.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(s.id, e.target)}
+                >
+                  <Line
+                    key={s.id + '-line'}
+                    points={relPoints}
+                    stroke={s.stroke}
+                    strokeWidth={s.strokeWidth}
+                    dash={s.dash}
+                    hitStrokeWidth={20}
+                  />
+                </Group>
               );
+            }
+            if (s.type === 'lateral_pipe') {
+              // Standardize dash size for all lateral pipes
+              const dash = [16, 8];
+              const arrowLength = 14;
+              const arrowWidth = 10;
+              const [x1, y1, x2, y2] = s.points;
+              const dx = x2 - x1;
+              const dy = y2 - y1;
+              const len = Math.sqrt(dx * dx + dy * dy);
+              const offset = arrowLength * (len > 0 ? 1 : 0) / len;
+              // All points relative to (x1, y1)
+              const relPoints = [0, 0, dx, dy];
+              const sx1 = dx * offset;
+              const sy1 = dy * offset;
+              const ex2 = dx - dx * offset;
+              const ey2 = dy - dy * offset;
+              return (
+                <Group
+                  key={s.id + '-group'}
+                  id={s.id}
+                  x={x1}
+                  y={y1}
+                  draggable={true}
+                  onClick={() => setSelectedId(s.id)}
+                  onDragEnd={(e) => handleDragEnd(s.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(s.id, e.target)}
+                >
+                  <Line
+                    key={s.id + '-line'}
+                    points={relPoints}
+                    stroke={s.stroke}
+                    strokeWidth={s.strokeWidth}
+                    dash={dash}
+                    hitStrokeWidth={20}
+                  />
+                  <Arrow
+                    key={s.id + '-arrow-start'}
+                    points={[sx1, sy1, 0, 0]}
+                    pointerLength={arrowLength}
+                    pointerWidth={arrowWidth}
+                    fill={s.stroke}
+                    stroke={s.stroke}
+                    strokeWidth={s.strokeWidth}
+                  />
+                  <Arrow
+                    key={s.id + '-arrow-end'}
+                    points={[ex2, ey2, dx, dy]}
+                    pointerLength={arrowLength}
+                    pointerWidth={arrowWidth}
+                    fill={s.stroke}
+                    stroke={s.stroke}
+                    strokeWidth={s.strokeWidth}
+                  />
+                </Group>
+              );
+            }
 
             if (s.type === 'valve_image')
               return (
@@ -976,7 +1419,21 @@ const submitForm = async (e) => {
             return null;
           })}
 
-          <Transformer ref={trRef} rotateEnabled={true} anchorSize={8} borderStroke="black" borderDash={[4, 4]} />
+          <Transformer
+            ref={trRef}
+            rotateEnabled={true}
+            anchorSize={8}
+            borderStroke="black"
+            borderDash={[4, 4]}
+            enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+            boundBoxFunc={(oldBox, newBox) => {
+              // limit resize to minimum size
+              if (newBox.width < 50 || newBox.height < 50) {
+                return oldBox;
+              }
+              return newBox;
+            }}
+          />
         </Layer>
       </Stage>
 {/* 
