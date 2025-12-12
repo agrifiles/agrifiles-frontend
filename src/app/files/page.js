@@ -248,12 +248,12 @@ function FilesPageContent() {
                       Edit
                     </button>
 
-                    <button
+                    {/* <button
                       onClick={() => openBillModal(id, f.bill_id)}
                       className="text-purple-600 rounded-full border px-3 py-0 hover:cursor-pointer hover:text-purple-800 text-sm font-medium"
                     >
                       {linkedBill ? "Update Bill" : "Link Bill"}
-                    </button>
+                    </button> */}
 
                     <button
                       onClick={() => router.push(`/files/print/${id}`)}
@@ -311,13 +311,13 @@ function FilesPageContent() {
               >
                 Cancel
               </button>
-              <button
+              {/* <button
                 onClick={linkBill}
                 className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
                 disabled={isLinking || !selectedBillId}
               >
                 {isLinking ? "Linking..." : "Link"}
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
