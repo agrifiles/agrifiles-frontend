@@ -1116,7 +1116,7 @@ const submitForm = async (e) => {
         }}
       >
         <Layer>
-          {/* Render standard layout group if present */}
+          {/* Render standardd layout group if present */}
           {standardGroup && (
             <Group
               id={standardGroup.id}
