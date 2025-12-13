@@ -232,7 +232,14 @@ function FilesPageContent() {
                         onClick={() => editFile(id)}
                         className="flex-1 md:flex-auto text-blue-600 rounded-full border px-2 md:px-3 py-1 md:py-0 hover:cursor-pointer hover:text-blue-800 text-xs md:text-sm font-medium"
                       >
-                        Edit
+                        Edit file
+                      </button>
+
+                      <button
+                        onClick={() => router.push(`/new?id=${id}&section=bill`)}
+                        className="flex-1 md:flex-auto text-purple-600 rounded-full border px-2 md:px-3 py-1 md:py-0 hover:cursor-pointer hover:text-purple-800 text-xs md:text-sm font-medium"
+                      >
+                        Direct Edit Bill
                       </button>
 
                       <button

@@ -15,6 +15,7 @@ function NewFilePageContent() {
   // ---------- Localization ----------
   const { t, lang, toggleLang } = useContext(LangContext);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [savedFileId, setSavedFileId] = useState(null); // store returned id
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -49,6 +50,21 @@ function NewFilePageContent() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Scroll to bill section when section=bill parameter is present
+  useEffect(() => {
+    const section = searchParams?.get('section');
+    if (section === 'bill') {
+      // Set activeSection to 'bill' so the bill tab is visible
+      setActiveSection('bill');
+      setTimeout(() => {
+        const billSection = document.getElementById('bill-section');
+        if (billSection) {
+          billSection.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 300);
+    }
+  }, [searchParams]);
 
   // Scroll to top function
   const scrollToTop = () => {
@@ -166,7 +182,9 @@ function NewFilePageContent() {
   const [lastFetchedMonthYear, setLastFetchedMonthYear] = useState('');
   const [products, setProducts] = useState([]);
 
-  const searchParams = useSearchParams();
+  // Fitting / Installation & Accessories charges
+  const [enableFittingCharges, setEnableFittingCharges] = useState(false);
+  const [fittingChargesPercent, setFittingChargesPercent] = useState(0);
 
   // Load districts based on selected language
   useEffect(() => {
@@ -456,6 +474,23 @@ function NewFilePageContent() {
 
                 console.log('✅ Merged bill items with products:', mergedItems);
                 setBillItems(mergedItems);
+
+                // Check if bill has fitting charges
+                const fittingChargeItem = bill.items.find(item => 
+                  item.is_fitting_charge === true || item.description?.includes('Fitting / Installation & Accessories charges')
+                );
+                
+                if (fittingChargeItem) {
+                  console.log('✅ Found fitting charges:', fittingChargeItem);
+                  // Extract percentage from description (e.g., "Fitting / Installation & Accessories charges @ 5%")
+                  const percentMatch = fittingChargeItem.description?.match(/@\s*([\d.]+)%/);
+                  if (percentMatch) {
+                    const extractedPercent = parseFloat(percentMatch[1]);
+                    setEnableFittingCharges(true);
+                    setFittingChargesPercent(extractedPercent);
+                    console.log('✅ Set fitting charges percent to:', extractedPercent);
+                  }
+                }
               }
             }
           } else {
@@ -634,7 +669,27 @@ const updateBillItemGST = (productId, newGST) => {
 
 // Get only items with qty > 0 for saving
 const getBillItemsForSave = () => {
-  return billItems.filter(it => (it.qty || 0) > 0);
+  const items = billItems.filter(it => (it.qty || 0) > 0);
+  
+  // Add fitting charges as a separate item if enabled
+  if (enableFittingCharges && fittingChargesPercent > 0) {
+    const taxableAmount = computeBillTotals().taxable;
+    const fittingChargesAmount = (fittingChargesPercent / 100) * taxableAmount;
+    
+    items.push({
+      product_id: null,
+      description: `Fitting / Installation & Accessories charges @ ${fittingChargesPercent}%`,
+      hsn: '',
+      gst_percent: 0,
+      sales_rate: fittingChargesAmount,
+      qty: 1,
+      amount: fittingChargesAmount,
+      uom: 'FLAT',
+      is_fitting_charge: true
+    });
+  }
+  
+  return items;
 };
 
 // Compute bill totals
@@ -649,8 +704,15 @@ const computeBillTotals = () => {
   }
   taxable = Number(taxable.toFixed(2));
   totalGst = Number(totalGst.toFixed(2));
-  const total = Number((taxable + totalGst).toFixed(2));
-  return { taxable, totalGst, total };
+  
+  // Calculate fitting charges if enabled
+  let fittingChargesAmount = 0;
+  if (enableFittingCharges && fittingChargesPercent > 0) {
+    fittingChargesAmount = Number(((fittingChargesPercent / 100) * taxable).toFixed(2));
+  }
+  
+  const total = Number((taxable + totalGst + fittingChargesAmount).toFixed(2));
+  return { taxable, totalGst, fittingChargesAmount, total };
 };
 
 // Load products on mount
@@ -2281,16 +2343,48 @@ const submitFormAndPrint = async (e) => {
     </div>
 
     {/* Bill Items Section - All Products with Qty Inputs */}
-    <div className="mb-6">
+    <div id="bill-section" className="mb-6">
       <h2 className="text-lg font-semibold text-gray-800 mb-3">Products (Enter Qty to include in bill)</h2>
       <p className="text-sm text-gray-500 mb-4">All available products are shown below. Enter quantity to include them in the bill. Items with qty=0 will not be saved.</p>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-100 shadow-sm">
+      {/* Fitting / Installation & Accessories Charges Section Add Fitting / Installation & Accessories Charges */}
+      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enableFittingCharges}
+              onChange={(e) => setEnableFittingCharges(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="font-semibold text-gray-700 text-sm md:text-base">फिटिंग / इन्स्टॉलेशन आणि अक्सेसरीज शुल्क जोडा टक्केवारी (%)</span>
+          </label>
+
+          {enableFittingCharges && (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="w-24 rounded-md border border-gray-300 px-2 py-1 text-right focus:ring-1 focus:ring-blue-300 focus:border-blue-300"
+                value={fittingChargesPercent}
+                onChange={(e) => setFittingChargesPercent(Number(e.target.value) || 0)}
+                placeholder="0"
+              />
+              <span className="text-sm text-gray-600">
+                ≈ ₹{enableFittingCharges && fittingChargesPercent > 0 ? ((fittingChargesPercent / 100) * computeBillTotals().taxable).toFixed(2) : '0.00'}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-100 shadow-sm">
         <table className="min-w-full bg-white">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Description</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">HSN</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Rate</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">GST%</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Qty</th>
@@ -2314,10 +2408,6 @@ const submitFormAndPrint = async (e) => {
                   {it.size && <div className="text-xs text-gray-400">Size: {it.size}</div>}
                 </td>
 
-                <td className="px-4 py-3 text-sm text-gray-700">
-                  {it.hsn || '-'}
-                </td>
-
                 <td className="px-4 py-3 text-sm text-right">
                   ₹{Number(it.sales_rate || 0).toFixed(2)}
                 </td>
@@ -2339,7 +2429,8 @@ const submitFormAndPrint = async (e) => {
                     type="number"
                     min="0"
                     step="1"
-                    className="w-24 rounded-md border border-gray-200 px-2 py-1 text-right focus:ring-1 focus:ring-green-300 focus:border-green-300"
+                    disabled={it.is_fitting_charge === true}
+                    className="w-24 rounded-md border border-gray-200 px-2 py-1 text-right focus:ring-1 focus:ring-green-300 focus:border-green-300 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                     value={it.qty ?? 0}
                     onChange={(e) => updateBillItemQty(it.product_id, e.target.value)}
                     placeholder="0"
@@ -2355,20 +2446,86 @@ const submitFormAndPrint = async (e) => {
         </table>
       </div>
 
-      {/* Bill Totals - Only for items with qty > 0 */}
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-3">
+        {billItems.length === 0 && (
+          <div className="py-8 text-center text-gray-500 bg-gray-50 rounded-lg">
+            Loading products...
+          </div>
+        )}
+
+        {billItems.map((it) => (
+          <div 
+            key={it.product_id} 
+            className={`p-4 rounded-lg border transition ${(it.qty || 0) > 0 ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
+          >
+            <div className="mb-3">
+              <div className="font-semibold text-gray-800">{it.description || 'N/A'}</div>
+              {it.size && <div className="text-xs text-gray-500 mt-1">Size: {it.size}</div>}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Rate:</span>
+                <span className="font-medium">₹{Number(it.sales_rate || 0).toFixed(2)}</span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">GST %:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="w-20 rounded-md border border-gray-300 px-2 py-1 text-right text-sm focus:ring-1 focus:ring-green-300 focus:border-green-300"
+                  value={it.gst_percent ?? 0}
+                  onChange={(e) => updateBillItemGST(it.product_id, e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Qty:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  disabled={it.is_fitting_charge === true}
+                  className="w-20 rounded-md border border-gray-300 px-2 py-1 text-right text-sm focus:ring-1 focus:ring-green-300 focus:border-green-300 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                  value={it.qty ?? 0}
+                  onChange={(e) => updateBillItemQty(it.product_id, e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                <span className="font-semibold text-gray-700">Amount:</span>
+                <span className="font-bold text-lg text-green-600">₹{Number(it.amount || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bill Totals - Mobile & Desktop */}
       <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-        <div className="flex justify-end gap-8">
+        <div className="grid grid-cols-2 md:flex md:justify-end gap-4 md:gap-8">
           <div>
-            <p className="text-sm text-gray-600">Taxable Amount:</p>
-            <p className="text-lg font-semibold">₹{computeBillTotals().taxable.toFixed(2)}</p>
+            <p className="text-xs md:text-sm text-gray-600">Taxable Amount:</p>
+            <p className="text-base md:text-lg font-semibold">₹{computeBillTotals().taxable.toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Total GST:</p>
-            <p className="text-lg font-semibold">₹{computeBillTotals().totalGst.toFixed(2)}</p>
+            <p className="text-xs md:text-sm text-gray-600">Total GST:</p>
+            <p className="text-base md:text-lg font-semibold">₹{computeBillTotals().totalGst.toFixed(2)}</p>
           </div>
-          <div>
-            <p className="text-sm text-gray-600">Total Amount:</p>
-            <p className="text-xl font-bold text-green-600">₹{computeBillTotals().total.toFixed(2)}</p>
+          {computeBillTotals().fittingChargesAmount > 0 && (
+            <div>
+              <p className="text-xs md:text-sm text-gray-600">Fitting Charges:</p>
+              <p className="text-base md:text-lg font-semibold">₹{computeBillTotals().fittingChargesAmount.toFixed(2)}</p>
+            </div>
+          )}
+          <div className="col-span-2 md:col-span-1">
+            <p className="text-xs md:text-sm text-gray-600">Total Amount:</p>
+            <p className="text-lg md:text-xl font-bold text-green-600">₹{computeBillTotals().total.toFixed(2)}</p>
           </div>
         </div>
       </div>
