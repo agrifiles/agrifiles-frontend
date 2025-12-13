@@ -5,7 +5,7 @@ import { LangContext } from '../layout';
 import { Stage, Layer, Rect, Circle, Line, Image, Transformer, Arrow, Group } from 'react-konva';
 import useImage from 'use-image';
 import { useRouter, useSearchParams } from 'next/navigation'; // optional navigation
-import { getCurrentUserId, getCurrentUser, API_BASE } from '@/lib/utils';
+import { getCurrentUserId, getCurrentUser, API_BASE, getUserCompanyLinks } from '@/lib/utils';
 import Loader from '@/components/Loader';
 import { districtsEn, districtsMr } from '@/lib/districts';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -84,10 +84,8 @@ function NewFilePageContent() {
     // engineer details (auto-populated from company selection)
     engineerDesignation: '', engineerMobile: ''
   });
-  // const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value
-
-    
-  //  });
+  
+  const [originalCompany, setOriginalCompany] = useState(''); // Track original company for edit mode
 
   const handleChange = (e) => {
   const { name, value } = e.target;
@@ -95,9 +93,39 @@ function NewFilePageContent() {
   setForm((prev) => {
     const updatedForm = { ...prev, [name]: value };
 
-    // ✅ If the "company" field changes, auto-populate engineer details only if they exist
+    // ✅ If the "company" field changes, auto-populate engineer details and reload products
     if (name === "company") {
       const selectedCompany = companies.find(c => c.company_name === value);
+      
+      // 🔄 If company is changing and bill exists, show confirmation to delete and reload items
+      if (originalCompany && originalCompany !== value && billNo) {
+        const confirmed = window.confirm(
+          `You are changing the company from "${originalCompany}" to "${value}". ` +
+          `⚠️ All items in the current bill will be DELETED and replaced with products from the new company. Continue?`
+        );
+        if (!confirmed) {
+          // Revert to original company
+          updatedForm.company = originalCompany;
+          return updatedForm;
+        } else {
+          // Company change confirmed - delete old bill items and reload with new company products
+          if (selectedCompany) {
+            console.log('🔄 Company changed from', originalCompany, 'to', value);
+            console.log('📦 Company ID:', selectedCompany.company_id);
+            
+            // Delete existing bill items and reload with new company products
+            handleCompanyChangeInBill(selectedCompany.company_id);
+          }
+        }
+      } else if (!billNo && selectedCompany) {
+        // New file or no bill yet - just reload products for selected company
+        console.log('� [FILTER] Company selected (NEW FILE/BILL)');
+        console.log('🔄 [FILTER] Company name:', value);
+        console.log('🔄 [FILTER] Company ID:', selectedCompany.company_id, 'Type:', typeof selectedCompany.company_id);
+        console.log('🔄 [FILTER] Calling loadProductsForCompany()...');
+        loadProductsForCompany(selectedCompany.company_id);
+      }
+      
       if (selectedCompany && selectedCompany.engineer_name) {
         // Only populate if engineer_name exists
         updatedForm.salesEngg = selectedCompany.engineer_name;
@@ -212,15 +240,25 @@ function NewFilePageContent() {
     }
   }, [form.district, districts]); // Re-run when district OR districts array changes
 
-  // Fetch companies on mount
+  // Fetch companies on mount (master list + user's linked companies)
   useEffect(() => {
     const fetchCompanies = async () => {
       try {
         setLoadingCompanies(true);
-        const res = await fetch(`${API_BASE}/api/files/companies/list`);
+        
+        // Get user ID and fetch user's linked companies
+        const uid = getCurrentUserId();
+        if (!uid) {
+          console.log('No user ID found');
+          return;
+        }
+        
+        const res = await fetch(`${API_BASE}/api/files/companies/list/${uid}`);
         const data = await res.json();
-        console.log('Fetched companies:', data);
+        
         if (data.success && data.companies) {
+          // API now returns user-specific companies with engineer details already included
+          console.log('✅ Fetched user companies with engineer details:', data.companies);
           setCompanies(data.companies);
         }
       } catch (err) {
@@ -231,6 +269,25 @@ function NewFilePageContent() {
     };
     fetchCompanies();
   }, []);
+
+  // Auto-load products when company is selected in form (for new files)
+  useEffect(() => {
+    if (!form.company) {
+      console.log('🔄 [AUTO] Company cleared - clearing products');
+      setBillItems([]);
+      setProducts([]);
+      return;
+    }
+
+    // Find the selected company from companies list
+    const selectedCompany = companies.find(c => c.company_name === form.company);
+    if (selectedCompany && !savedFileId) {
+      // NEW FILE mode - auto-load products for this company
+      console.log('🔄 [AUTO] Company changed to:', form.company);
+      console.log('🔄 [AUTO] Calling loadProductsForCompany() for company_id:', selectedCompany.company_id);
+      loadProductsForCompany(selectedCompany.company_id);
+    }
+  }, [form.company, companies, savedFileId]);
 
   // Set default district and taluka from user data (for main, w1, and w2) - only if NOT editing
   useEffect(() => {
@@ -285,6 +342,11 @@ function NewFilePageContent() {
         // set internal saved id so saves use PUT
         const returnedId = file.id ?? file.ID ?? file.file_id ?? null;
         if (returnedId) setSavedFileId(returnedId);
+        
+        // Track original company for edit mode
+        if (file.company) {
+          setOriginalCompany(file.company);
+        }
 
         // map DB fields to form fields
         setForm((prev) => ({
@@ -428,29 +490,58 @@ function NewFilePageContent() {
               setBillNo(bill.bill_no || '');
               setBillDate(bill.bill_date ? new Date(bill.bill_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
-              // Fetch all products and merge with bill items
+              // Fetch all products and merge with bill items (filter by company from form)
               if (bill.items && Array.isArray(bill.items)) {
-                console.log('✅ Fetching all products to merge with bill items');
+                console.log('✅ Fetching products to merge with bill items');
                 
-                // Fetch all products
+                // Get the selected company from form (will be set from file data)
+                // Find company_id from companies array based on form.company name
+                const selectedCompany = companies.find(c => c.company_name === form.company);
+                const companyId = selectedCompany?.company_id;
+                
+                if (!companyId) {
+                  console.warn('⚠️ Could not find company from form, using first item company_id');
+                  // Fallback to bill items company
+                }
+                
+                // Convert companyId to string since spare2 is TEXT field in database
+                const companyIdText = String(companyId);
+                console.log(`📦 Using company from dropdown: ${form.company}, company_id: ${companyIdText} (Type: ${typeof companyIdText})`);
+                
+                // Fetch products for user and company
                 const owner_id = getCurrentUserId();
-                const params = new URLSearchParams();
-                if (owner_id) params.append('user_id', owner_id);
-                const productsRes = await fetch(`${API_BASE}/products/list?${params.toString()}`);
+                console.log(`📦 Bill loading: owner_id=${owner_id}, companyId=${companyIdText}`);
+                
+                if (!owner_id) {
+                  console.error('❌ Bill loading: No owner_id found');
+                  return;
+                }
+                
+                let productsUrl = `${API_BASE}/api/files/products/${owner_id}`;
+                if (companyIdText) {
+                  productsUrl += `?companyId=${companyIdText}`;
+                }
+                console.log('📡 Bill loading fetch URL:', productsUrl);
+                const productsRes = await fetch(productsUrl);
                 const productsText = await productsRes.text();
                 const productsData = JSON.parse(productsText || '{}');
                 const allProducts = productsData.products || [];
 
+                // Backend already filtered by user and company, so use all returned products
+                console.log(`✅ Loaded ${allProducts.length} products for company ${companyIdText}`);
+                
                 // Create a map of product_id -> {qty, gst_percent} from loaded bill
                 const billItemMap = {};
                 bill.items.forEach(item => {
-                  billItemMap[item.product_id] = {
-                    qty: item.qty || 0,
-                    gst_percent: item.gst_percent || item.gst || 0
-                  };
+                  if (!item.is_fitting_charge) {  // Skip fitting charges for product mapping
+                    billItemMap[item.product_id] = {
+                      qty: item.qty || 0,
+                      gst_percent: item.gst_percent || item.gst || 0
+                    };
+                  }
                 });
 
-                // Create merged items: all products with bill quantities
+                // Create merged items: loaded products with bill quantities
                 const mergedItems = allProducts.map(prod => {
                   const billItem = billItemMap[prod.product_id || prod.id];
                   const productId = prod.product_id ?? prod.id;
@@ -468,12 +559,14 @@ function NewFilePageContent() {
                     uom: prod.unit_of_measure || prod.unit || prod.uom || '',
                     gst_percent: billItem?.gst_percent ?? Number(prod.sgst || prod.cgst || prod.gst_percent || 0),
                     qty: qty,
-                    amount: Number((qty * salesRate).toFixed(2))
+                    amount: Number((qty * salesRate).toFixed(2)),
+                    spare2: prod.spare2  // Track company_id
                   };
                 });
 
                 console.log('✅ Merged bill items with products:', mergedItems);
                 setBillItems(mergedItems);
+                setProducts(allProducts);  // Also update products state
 
                 // Check if bill has fitting charges
                 const fittingChargeItem = bill.items.find(item => 
@@ -508,51 +601,7 @@ function NewFilePageContent() {
     loadFileForEdit();
   }, [searchParams]);
 
-// const submitForm = async (e) => {
-//     e.preventDefault();
-//     // build payload exactly as backend expects
-//     const payload = {
-//       title: `${form.farmerName || 'File'} - ${form.fileDate}`,
-//       form,
-//       shapes
-//     };
 
-//     try {
-//       setSaving(true);
-//       let res, data;
-//       if (savedFileId) {
-//         // update existing
-//         res = await fetch(`/api/files/${savedFileId}`, {
-//           method: 'PUT',
-//           headers: { 'Content-Type': 'application/json' },
-//           body: JSON.stringify(payload)
-//         });
-//         data = await res.json();
-//         if (!res.ok || !data.success) throw new Error(data.error || 'Update failed');
-//         alert(t.fileUpdated || 'File updated successfully');
-//       } else {
-//         // create new
-//         res = await fetch('/api/files', {
-//           method: 'POST',
-//           headers: { 'Content-Type': 'application/json' },
-//           body: JSON.stringify(payload)
-//         });
-//         data = await res.json();
-//         if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
-//         setSavedFileId(data.file.id || data.file.ID || data.file.id); // adapt to returned shape
-//         alert(t.fileSaved || `Saved (id: ${data.file.id})`);
-//       }
-//       // optional: navigate to view page
-//       // router.push(`/files/${data.file.id}`);
-//     } catch (err) {
-//       console.error('save file err', err);
-//       alert((err && err.message) || t.saveFailed || 'Save failed');
-//     } finally {
-//       setSaving(false);
-//     }
-//   };
-  // ---------- Add Shapes ----------
- 
   const resetForm = () => {
   setForm({
     fyYear: '', company: '', applicationId: '', farmerId: '', farmerName: '', fatherName: '',
@@ -614,12 +663,26 @@ const handleBillDateChange = (newDate) => {
 const loadProducts = async () => {
   const owner_id = getCurrentUserId();
   try {
-    const params = new URLSearchParams();
-    if (owner_id) params.append('user_id', owner_id);
-    const res = await fetch(`${API_BASE}/products/list?${params.toString()}`);
+    console.log('📦 loadProducts: owner_id =', owner_id, 'Type:', typeof owner_id);
+    
+    if (!owner_id) {
+      console.error('❌ loadProducts: No owner_id found');
+      return;
+    }
+    
+    const url = `${API_BASE}/api/files/products/${owner_id}`;
+    console.log('📡 Fetching from:', url);
+    
+    const res = await fetch(url);
     const text = await res.text();
     const data = JSON.parse(text || '{}');
     const allProducts = data.products || [];
+    
+    console.log('✅ Loaded products count:', allProducts.length);
+    if (allProducts.length > 0) {
+      console.log('Sample product spare1 values:', allProducts.slice(0, 3).map(p => ({ product_id: p.product_id, spare1: p.spare1 })));
+    }
+    
     setProducts(allProducts);
 
     // Initialize bill items with all products (qty = 0)
@@ -634,12 +697,108 @@ const loadProducts = async () => {
       uom: prod.unit_of_measure || prod.unit || prod.uom || '',
       gst_percent: Number(prod.sgst || prod.cgst || prod.gst_percent || 0),
       qty: 0, // Default qty is 0
-      amount: 0
+      amount: 0,
+      spare2: prod.spare2 // Track company_id for filtering
     }));
     setBillItems(initialItems);
   } catch (err) {
     console.error(err);
   }
+};
+
+// Load products ONLY for selected company (filter by spare1=userId AND spare2=companyId)
+const loadProductsForCompany = async (companyId) => {
+  const owner_id = getCurrentUserId();
+  try {
+    // Convert companyId to string since spare2 is TEXT field in database
+    const companyIdText = String(companyId);
+    console.log('');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🔄 [FILTER] loadProductsForCompany() CALLED');
+    console.log('   userId:', owner_id, 'Type:', typeof owner_id);
+    console.log('   companyId:', companyIdText, 'Type:', typeof companyIdText);
+    console.log('═══════════════════════════════════════════════════');
+    
+    if (!owner_id) {
+      console.error('❌ loadProductsForCompany: No owner_id found');
+      return;
+    }
+    
+    const url = `${API_BASE}/api/files/products/${owner_id}?companyId=${companyIdText}`;
+    console.log('📡 API URL:', url);
+    
+    const res = await fetch(url);
+    const text = await res.text();
+    const data = JSON.parse(text || '{}');
+    const allProducts = data.products || [];
+    
+    // Backend already filters by user AND company, so use all returned products
+    console.log(`✅ API returned ${allProducts.length} products`);
+    if (allProducts.length > 0) {
+      console.log('🔍 Sample products (checking spare2 = company):');
+      allProducts.slice(0, 3).forEach((p, i) => {
+        console.log(`   [${i}] product_id=${p.product_id}, spare1=${p.spare1}, spare2=${p.spare2}, description=${p.description_of_good}`);
+      });
+    } else {
+      console.warn('⚠️ No products returned! Check if company has products or if filter is correct');
+    }
+    
+    console.log('📝 Setting products state with:', allProducts.length, 'items');
+    setProducts(allProducts);
+
+    // Initialize bill items with loaded products (qty = 0)
+    const initialItems = allProducts.map(prod => ({
+      product_id: prod.product_id ?? prod.id,
+      description: prod.description_of_good || prod.name || prod.product_name || '',
+      hsn: prod.hsn_code || prod.hsn || '',
+      batch_no: prod.batch_no || prod.batchNo || '',
+      size: prod.size || '',
+      gov_rate: Number(prod.gov_rate || prod.govRate || 0),
+      sales_rate: Number(prod.selling_rate || prod.sellingRate || prod.sales_rate || 0),
+      uom: prod.unit_of_measure || prod.unit || prod.uom || '',
+      gst_percent: Number(prod.sgst || prod.cgst || prod.gst_percent || 0),
+      qty: 0, // Default qty is 0
+      amount: 0,
+      spare2: prod.spare2 // Track company_id
+    }));
+    
+    console.log('📋 Setting billItems state with:', initialItems.length, 'items');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('');
+    setBillItems(initialItems);
+  } catch (err) {
+    console.error('❌ Error loading products for company:', err);
+  }
+};
+
+// Handle company change when bill exists - delete old items and load new ones
+const handleCompanyChangeInBill = async (newCompanyId) => {
+  console.log(`🔄 Handling company change in bill to company ${newCompanyId}`);
+  
+  // Step 1: Delete all bill items from database for this bill
+  if (billNo) {
+    try {
+      console.log(`🗑️ Deleting all bill items for bill_no: ${billNo}`);
+      const deleteRes = await fetch(`${API_BASE}/api/bills/${billNo}/items`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!deleteRes.ok) {
+        console.warn('Warning: Could not delete bill items from database:', deleteRes.statusText);
+      } else {
+        console.log('✅ Bill items deleted from database');
+      }
+    } catch (err) {
+      console.error('Error deleting bill items:', err);
+    }
+  }
+  
+  // Step 2: Clear bill items from state and reload with new company products
+  console.log(`📦 Loading products for new company ${newCompanyId}`);
+  await loadProductsForCompany(newCompanyId);
+  
+  console.log('✅ Bill items cleared and reloaded with new company products');
 };
 
 // Update bill item qty (automatically calculate amount)
@@ -717,7 +876,9 @@ const computeBillTotals = () => {
 
 // Load products on mount
 useEffect(() => {
-  loadProducts();
+  console.log('🔄 [FILTER] Page mounted - NOT loading all products');
+  console.log('🔄 [FILTER] Products will be loaded ONLY when company is selected');
+  
   const owner_id = getCurrentUserId();
   if (owner_id && billDate) {
     fetchNextBillNo(billDate);
@@ -1310,9 +1471,18 @@ const submitFormAndPrint = async (e) => {
   </button>
   <button
     type="button"
-    onClick={() => setActiveSection('bill')}
+    onClick={() => {
+      if (!form.company) {
+        alert('⚠️ Please select a company first');
+        return;
+      }
+      setActiveSection('bill');
+    }}
+    disabled={!form.company}
     className={`px-4 md:px-6 py-3 font-semibold text-base md:text-lg transition-colors duration-200 ${
-      activeSection === 'bill'
+      !form.company
+        ? 'cursor-not-allowed opacity-50 text-gray-400 border-b-4 border-transparent'
+        : activeSection === 'bill'
         ? 'border-b-4 border-green-600 text-green-700 bg-green-50'
         : 'text-gray-600 hover:text-green-600 border-b-4 border-transparent'
     }`}
@@ -1423,13 +1593,13 @@ const submitFormAndPrint = async (e) => {
           <h3 className="text-lg md:text-xl font-bold text-cyan-700 mb-4 md:mb-6 pb-3 md:pb-4 border-b-4 border-cyan-400">{t.stepTwo || 'Company & Equipment Details'}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
 
-                        <div className="flex flex-col">
+            <div className="flex flex-col">
               <label className="font-semibold mb-1 text-sm md:text-base">{t.selectCompany}</label>
               <select name="company" value={form.company} onChange={handleChange} className="input" required disabled={loadingCompanies}>
                 <option value="">{loadingCompanies ? 'Loading...' : t.selectCompany}</option>
-                {companies.map((comp) => (
+                {companies.filter(c => c.engineer_name).map((comp) => (
                   <option key={comp.company_id} value={comp.company_name}>
-                    {comp.company_name}
+                    {comp.company_name} - {comp.engineer_name} ({comp.designation})
                   </option>
                 ))}
               </select>
@@ -2297,6 +2467,14 @@ const submitFormAndPrint = async (e) => {
 {/* BILL SECTION */}
 {activeSection === 'bill' && (
   <div>
+    {/* Show message if no company selected */}
+    {!form.company && (
+      <div className="mb-6 p-4 bg-red-100 border border-red-400 rounded-lg text-red-700">
+        <p className="font-semibold">⚠️ No company selected</p>
+        <p className="text-sm">Please select a company from the File Details tab before creating a bill.</p>
+      </div>
+    )}
+    
     {/* Bill Header */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
       <div>
@@ -2344,6 +2522,7 @@ const submitFormAndPrint = async (e) => {
 
     {/* Bill Items Section - All Products with Qty Inputs */}
     <div id="bill-section" className="mb-6">
+      {console.log('🔍 [RENDER] Bill section rendered with', billItems.length, 'billItems:', billItems.slice(0, 3).map(b => ({ product_id: b.product_id, description: b.description, spare2: b.spare2 })))}
       <h2 className="text-lg font-semibold text-gray-800 mb-3">Products (Enter Qty to include in bill)</h2>
       <p className="text-sm text-gray-500 mb-4">All available products are shown below. Enter quantity to include them in the bill. Items with qty=0 will not be saved.</p>
 
@@ -2396,12 +2575,15 @@ const submitFormAndPrint = async (e) => {
             {billItems.length === 0 && (
               <tr>
                 <td colSpan="6" className="py-8 text-center text-gray-500">
-                  Loading products...
+                  {form.company ? 'Loading products for company...' : '⚠️ Please select a company first'}
                 </td>
               </tr>
             )}
 
-            {billItems.map((it) => (
+            {billItems.length > 0 && console.log(`📊 [RENDER] Rendering ${billItems.length} bill items in table`)}
+            {billItems.map((it) => {
+              console.log(`   [Row] product_id=${it.product_id}, spare2=${it.spare2}, description=${it.description}`);
+              return (
               <tr key={it.product_id} className={`transition hover:bg-green-100 ${(it.qty || 0) > 0 ? 'bg-green-100' : 'bg-white'}`}>
                 <td className="px-4 py-3 text-sm text-gray-800">
                   <div className="font-medium">{it.description || 'N/A'}</div>
@@ -2441,7 +2623,8 @@ const submitFormAndPrint = async (e) => {
                   ₹{Number(it.amount || 0).toFixed(2)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
