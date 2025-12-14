@@ -1949,7 +1949,7 @@ const submitFormAndPrint = async (e) => {
             </div> 
 
             {/* <div className="flex flex-col">
-              <label className="font-semibold mb-1">{t.billNo}</label>
+              <label className="font-semibold mb-1"sddsds>{t.billNo}</label>
               <input name="billNo" value={form.billNo} onChange={handleChange} className="input" />
             </div>
 
