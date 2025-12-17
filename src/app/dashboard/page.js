@@ -46,7 +46,7 @@ function DashboardPageContent() {
         </div>
 
         {/* Two Section Layout - Files & Quotations */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">  
 
           {/* Files Section */}
           <div className="relative bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border-2 border-green-200 shadow-lg">

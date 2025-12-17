@@ -79,6 +79,7 @@ function NewQuotationPageContent() {
     area8A: '',
     gutNo: '',
     cropName: '',
+    driplineProduct: '',
     irrigationArea: '',
     lateralSpacing: '',
     dripperDischarge: '',
@@ -285,6 +286,7 @@ function NewQuotationPageContent() {
           area8A: quotation.area8a || '',
           gutNo: '',
           cropName: quotation.crop_name || '',
+          driplineProduct: quotation.dripline_product || '',
           irrigationArea: quotation.irrigation_area || '',
           lateralSpacing: quotation.lateral_spacing || '',
           dripperDischarge: '',
@@ -440,6 +442,7 @@ function NewQuotationPageContent() {
       const allProducts = data.products || [];
 
       console.log(`✅ API returned ${allProducts.length} products`);
+      console.log("📋 Products:", allProducts);
       setProducts(allProducts);
 
       // Initialize quotation items with loaded products (qty = 0)
@@ -448,6 +451,7 @@ function NewQuotationPageContent() {
         description: prod.description_of_good || prod.name || prod.product_name || '',
         hsn: prod.hsn_code || prod.hsn || '',
         batch_no: prod.batch_no || prod.batchNo || '',
+        cml_no: prod.cml_no || prod.cmlNo || '',
         size: prod.size || '',
         gov_rate: Number(prod.gov_rate || prod.govRate || 0),
         sales_rate: Number(prod.selling_rate || prod.sellingRate || prod.sales_rate || 0),
@@ -535,6 +539,7 @@ function NewQuotationPageContent() {
           size: item.size || '',
           uom: item.uom || '',
           batch_no: item.batch_no || '',
+          cml_no: item.cml_no || '',
           gov_rate: Number(item.gov_rate) || 0,
           amount: Number(item.amount) || 0
         };
@@ -557,6 +562,7 @@ function NewQuotationPageContent() {
           description: prod.description_of_good || prod.name || prod.product_name || '',
           hsn: prod.hsn_code || prod.hsn || '',
           batch_no: quotationItem?.batch_no || prod.batch_no || prod.batchNo || '',  // Use saved quotationItem batch_no first
+          cml_no: quotationItem?.cml_no || prod.cml_no || prod.cmlNo || '',  // Use saved quotationItem cml_no first
           size: prod.size || '',
           gov_rate: Number(prod.gov_rate || prod.govRate || 0),
           sales_rate: salesRate,
@@ -576,6 +582,7 @@ function NewQuotationPageContent() {
           description: item.description || '',
           hsn: item.hsn || '',
           batch_no: item.batch_no || '',
+          cml_no: item.cml_no || '',
           size: item.size || '',
           gov_rate: Number(item.gov_rate) || 0,
           sales_rate: Number(item.sales_rate) || 0,
@@ -738,6 +745,7 @@ function NewQuotationPageContent() {
       taluka: form.taluka,
       district: form.district,
       crop_name: form.cropName,
+      dripline_product: form.driplineProduct,
       application_id: form.applicationId || null,
       area8a: form.area8A,
       irrigation_area: form.irrigationArea,
@@ -822,6 +830,7 @@ function NewQuotationPageContent() {
       taluka: form.taluka,
       district: form.district,
       crop_name: form.cropName,
+      dripline_product: form.driplineProduct,
       application_id: form.applicationId || null,
       area8a: form.area8A,
       irrigation_area: form.irrigationArea,
@@ -999,6 +1008,15 @@ function NewQuotationPageContent() {
                 <option value={t.cucumber}>{t.cucumber}</option>
                 <option value={t.brinjal}>{t.brinjal}</option>
                 <option value={t.ladyfinger}>{t.ladyfinger}</option>
+              </select>
+            </div>
+            <div className="flex flex-col">
+              <label className="font-semibold mb-1">{t.irrigationType || 'Irrigation Type / सिंचन प्रकार'}</label>
+              <select name="driplineProduct" value={form.driplineProduct} onChange={handleChange} className="input">
+                <option value="">{t.irrigationType || 'सिंचन प्रकार निवडा'}</option>
+                <option value={t.drip}>{t.drip}</option>
+                <option value={t.sprinkler}>{t.sprinkler}</option>
+                <option value={t.microSprinkler}>{t.microSprinkler}</option>
               </select>
             </div>
             <div className="flex flex-col">

@@ -583,6 +583,7 @@ function NewFilePageContent() {
                     description: item.description || '',
                     hsn: item.hsn || '',
                     batch_no: item.batch_no || '',
+                    cml_no: item.cml_no || '',
                     size: item.size || '',
                     gov_rate: item.gov_rate || 0,
                     sales_rate: item.sales_rate || 0,
@@ -629,6 +630,7 @@ function NewFilePageContent() {
                     size: item.size || '',
                     uom: item.uom || '',
                     batch_no: item.batch_no || '',
+                    cml_no: item.cml_no || '',
                     gov_rate: Number(item.gov_rate) || 0,
                     amount: Number(item.amount) || 0
                   };
@@ -651,6 +653,7 @@ function NewFilePageContent() {
                     description: prod.description_of_good || prod.name || prod.product_name || '',
                     hsn: prod.hsn_code || prod.hsn || '',
                     batch_no: billItem?.batch_no || prod.batch_no || prod.batchNo || '',  // Use saved billItem batch_no first
+                    cml_no: billItem?.cml_no || prod.cml_no || prod.cmlNo || '',  // Use saved billItem cml_no first
                     size: prod.size || '',
                     gov_rate: Number(prod.gov_rate || prod.govRate || 0),
                     sales_rate: salesRate,
@@ -670,6 +673,7 @@ function NewFilePageContent() {
                     description: item.description || '',
                     hsn: item.hsn || '',
                     batch_no: item.batch_no || '',
+                    cml_no: item.cml_no || '',
                     size: item.size || '',
                     gov_rate: Number(item.gov_rate) || 0,
                     sales_rate: Number(item.sales_rate) || 0,
@@ -870,6 +874,7 @@ const loadProductsForCompany = async (companyId) => {
       description: prod.description_of_good || prod.name || prod.product_name || '',
       hsn: prod.hsn_code || prod.hsn || '',
       batch_no: prod.batch_no || prod.batchNo || '',
+      cml_no: prod.cml_no || prod.cmlNo || '',
       size: prod.size || '',
       gov_rate: Number(prod.gov_rate || prod.govRate || 0),
       sales_rate: Number(prod.selling_rate || prod.sellingRate || prod.sales_rate || 0),
