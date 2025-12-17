@@ -226,14 +226,20 @@ function NewQuotationPageContent() {
     if (!id) return; // Not in edit mode
     if (!form.company) return; // No company in form
     if (companies.length === 0) return; // Companies not loaded yet
-    if (quotationItems.length > 0) return; // Products already loaded
+    if (products.length > 0) return; // Products already loaded (check products, not quotationItems)
     
     const selectedCompany = companies.find(c => c.company_name === form.company);
     if (selectedCompany) {
       console.log('🔄 Loading products for company after companies loaded:', selectedCompany.company_id);
-      loadProductsForCompany(selectedCompany.company_id);
+      // Use existing quotation items to merge with products (preserves qty, batch_no, etc.)
+      const existingItems = quotationItems.filter(item => item.qty > 0);
+      if (existingItems.length > 0) {
+        loadProductsForCompanyWithItems(selectedCompany.company_id, existingItems);
+      } else {
+        loadProductsForCompany(selectedCompany.company_id);
+      }
     }
-  }, [companies, form.company, quotationItems.length, searchParams]);
+  }, [companies, form.company, products.length, searchParams]);
 
   // Set default district from user
   useEffect(() => {
@@ -350,6 +356,7 @@ function NewQuotationPageContent() {
             description: item.description || '',
             hsn: item.hsn || '',
             batch_no: item.batch_no || '',
+            cml_no: item.cml_no || '',
             size: item.size || '',
             gov_rate: Number(item.gov_rate || 0),
             sales_rate: Number(item.sales_rate || 0),
@@ -366,6 +373,7 @@ function NewQuotationPageContent() {
             description: item.description || '',
             hsn: item.hsn || '',
             batch_no: item.batch_no || '',
+            cml_no: item.cml_no || '',
             size: item.size || '',
             gov_rate: Number(item.gov_rate || 0),
             sales_rate: Number(item.sales_rate || 0),
