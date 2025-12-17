@@ -219,6 +219,9 @@ function NewQuotationPageContent() {
     fetchCompanies();
   }, []);
 
+  // Ref to store pending items for when companies load (avoids stale closure)
+  const pendingQuotationItemsRef = useRef(null);
+
   // Effect to load products when in edit mode and companies are loaded but products aren't
   // This handles the case where quotation had company_name but no company_id stored
   useEffect(() => {
@@ -226,18 +229,17 @@ function NewQuotationPageContent() {
     if (!id) return; // Not in edit mode
     if (!form.company) return; // No company in form
     if (companies.length === 0) return; // Companies not loaded yet
-    if (products.length > 0) return; // Products already loaded (check products, not quotationItems)
+    if (products.length > 0) return; // Products already loaded
+    if (!pendingQuotationItemsRef.current) return; // No pending items to merge
     
     const selectedCompany = companies.find(c => c.company_name === form.company);
     if (selectedCompany) {
       console.log('🔄 Loading products for company after companies loaded:', selectedCompany.company_id);
-      // Use existing quotation items to merge with products (preserves qty, batch_no, etc.)
-      const existingItems = quotationItems.filter(item => item.qty > 0);
-      if (existingItems.length > 0) {
-        loadProductsForCompanyWithItems(selectedCompany.company_id, existingItems);
-      } else {
-        loadProductsForCompany(selectedCompany.company_id);
-      }
+      // Use pending items from ref (preserves qty, batch_no, etc.)
+      const pendingItems = pendingQuotationItemsRef.current;
+      console.log(`📋 Using ${pendingItems.length} pending items for merge`);
+      loadProductsForCompanyWithItems(selectedCompany.company_id, pendingItems);
+      pendingQuotationItemsRef.current = null; // Clear after use
     }
   }, [companies, form.company, products.length, searchParams]);
 
@@ -348,9 +350,11 @@ function NewQuotationPageContent() {
           await loadProductsForCompanyWithItems(quotation.company_id, productItems);
         } else if (quotation.company_name) {
           // Fallback: Try to find company_id from company name in companies list
-          // Note: companies might not be loaded yet, so we wait for them
-          console.log('⚠️ No company_id in quotation, will try to find from company name:', quotation.company_name);
-          // We'll handle this after companies load via the effect below
+          // Note: companies might not be loaded yet, so we store items in ref for later merge
+          console.log('⚠️ No company_id in quotation, storing items in ref for later merge');
+          // Store in ref for the secondary effect to use when companies load
+          pendingQuotationItemsRef.current = productItems;
+          // Also set items immediately so user sees them (will be merged with products later)
           setQuotationItems(productItems.map(item => ({
             product_id: item.product_id,
             description: item.description || '',
