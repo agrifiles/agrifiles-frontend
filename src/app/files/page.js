@@ -445,7 +445,7 @@ function FilesPageContent() {
                         onClick={() => router.push(`/new?id=${id}&section=bill`)}
                         className="flex-1 md:flex-auto text-purple-600 rounded-full border px-2 md:px-3 py-1 md:py-0 hover:cursor-pointer hover:text-purple-800 text-xs md:text-sm font-medium"
                       >
-                        {t.linkBill}
+                        {t.edit}
                       </button>
 
                       <button
