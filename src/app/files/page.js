@@ -104,11 +104,19 @@ function FilesPageContent() {
       try { fJson = JSON.parse(fText); } catch (_) {}
       let filesList = fJson?.files || [];
 
-      // Sort files by created_at (oldest first, new files at bottom)
+      // Sort files by file_date (oldest first, new files at bottom)
+      // OLD LOGIC: Sort by created_at (commented below)
+      // filesList.sort((a, b) => {
+      //   const dateA = new Date(a.created_at || 0);
+      //   const dateB = new Date(b.created_at || 0);
+      //   return dateA.getTime() - dateB.getTime(); // Oldest first (new at bottom)
+      // });
+
+      // NEW LOGIC: Sort by file_date (oldest at top)
       filesList.sort((a, b) => {
-        const dateA = new Date(a.created_at || 0);
-        const dateB = new Date(b.created_at || 0);
-        return dateA.getTime() - dateB.getTime(); // Oldest first (new at bottom)
+        const dateA = new Date(a.file_date || a.fileDate || 0);
+        const dateB = new Date(b.file_date || b.fileDate || 0);
+        return dateA.getTime() - dateB.getTime(); // Oldest first (top)
       });
 
       const bRes = await fetch(`${API}/api/bills?owner_id=${ownerId}`);
