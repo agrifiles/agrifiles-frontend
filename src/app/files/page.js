@@ -335,12 +335,12 @@ function FilesPageContent() {
                         Print
                       </button>
 
-                      <button
+                      {/* <button
                         onClick={() => deleteFile(id)}
                         className="flex-1 md:flex-auto text-red-600 rounded-full border px-2 md:px-3 py-1 md:py-0 hover:text-red-900 hover:cursor-pointer text-xs md:text-sm font-medium"
                       >
                         Delete
-                      </button>
+                      </button> */}
                     </div>
                   </td>
                 </tr>
