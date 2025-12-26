@@ -754,6 +754,12 @@ function NewFilePageContent() {
                   const salesRate = Number(prod.selling_rate || prod.sellingRate || prod.sales_rate || 0);
                   const qty = Number(billItem?.qty) || 0;
                   
+                  // IMPORTANT: When editing, prioritize billItem's GST even if it's 0%
+                  // Don't fall back to product's GST (which might be 5% by default)
+                  const gstPercent = billItem !== undefined && billItem.gst_percent !== undefined 
+                    ? Number(billItem.gst_percent) 
+                    : Number(prod.sgst || prod.cgst || prod.gst_percent || 0);
+                  
                   return {
                     product_id: productId,
                     description: prod.description_of_good || prod.name || prod.product_name || '',
@@ -764,7 +770,7 @@ function NewFilePageContent() {
                     gov_rate: Number(prod.gov_rate || prod.govRate || 0),
                     sales_rate: salesRate,
                     uom: prod.unit_of_measure || prod.unit || prod.uom || '',
-                    gst_percent: Number(billItem?.gst_percent) || Number(prod.sgst || prod.cgst || prod.gst_percent || 0),
+                    gst_percent: gstPercent,
                     qty: qty,
                     amount: Number((qty * salesRate).toFixed(2)),
                     spare2: prod.spare2
@@ -812,6 +818,49 @@ function NewFilePageContent() {
                 setBillItems(finalItems);
                 setProducts(allProducts);
                 
+                // Extract most common GST % from bill items with NON-ZERO QTY (for hydration in global GST field)
+                // When editing: include items with 0% GST as valid values
+                const billItemsWithQty = finalItems.filter(item => item.qty > 0);
+                
+                console.log('🔍 GST Hydration Debug:');
+                console.log('  Total items:', finalItems.length);
+                console.log('  Items with qty > 0:', billItemsWithQty.length);
+                billItemsWithQty.forEach((item, idx) => {
+                  console.log(`    Item ${idx+1}: qty=${item.qty}, gst_percent=${item.gst_percent}, description=${item.description?.substring(0, 30)}`);
+                });
+                
+                if (billItemsWithQty.length > 0) {
+                  // Create frequency map of ALL GST percentages (including 0%)
+                  const gstFrequency = {};
+                  billItemsWithQty.forEach(item => {
+                    const gst = Number(item.gst_percent ?? 0); // Treat undefined/null as 0%
+                    gstFrequency[gst] = (gstFrequency[gst] || 0) + 1;
+                  });
+                  
+                  console.log('  GST Frequency map:', gstFrequency);
+                  
+                  // Find the most common GST %
+                  const mostCommonGst = Object.entries(gstFrequency)
+                    .sort((a, b) => b[1] - a[1])[0];
+                  
+                  if (mostCommonGst) {
+                    const gstPercent = Number(mostCommonGst[0]);
+                    const frequency = mostCommonGst[1];
+                    console.log(`📊 Most common GST in bill (qty > 0): ${gstPercent}% (appears ${frequency} times)`);
+                    setGlobalGstPercent(gstPercent);
+                    // Auto-enable only if GST > 0
+                    if (gstPercent > 0) {
+                      setEnableGlobalGst(true);
+                    } else {
+                      setEnableGlobalGst(false); // Keep disabled for 0% GST
+                    }
+                  }
+                } else {
+                  console.log(`📊 No items with qty > 0 - keeping GST at 0%`);
+                  setGlobalGstPercent(0);
+                  setEnableGlobalGst(false);
+                }
+                
                 // Cache this company's bill items for later switching
                 setBillItemsCache(prev => ({
                   ...prev,
@@ -833,9 +882,9 @@ function NewFilePageContent() {
                     setFittingChargesPercent(extractedPercent);
                     console.log('✅ Set fitting charges percent to:', extractedPercent);
                   }
-                  // Extract GST from fitting item
+                  // Extract GST from fitting item - use original value even if 0%
                   if (fittingChargeItem.gst_percent !== undefined && fittingChargeItem.gst_percent !== null) {
-                    setFittingChargesGst(Number(fittingChargeItem.gst_percent) || 5);
+                    setFittingChargesGst(Number(fittingChargeItem.gst_percent));
                     console.log('✅ Set fitting charges GST to:', fittingChargeItem.gst_percent);
                   }
                 }
