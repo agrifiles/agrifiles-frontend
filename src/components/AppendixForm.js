@@ -4,7 +4,7 @@
  * AppendixForm - Static Agricultural Form (परिशिष्ट - ३)
  * Displays the agricultural product details form as per the template
  */
-export default function AppendixForm({ userData, billData, fileData = {} }) {
+export default function AppendixForm({ userData, billData, fileData , fileName = {} }) {
   // Ensure userData is an object even if null or undefined
   const user = userData || {};
   console.log('Rendering AppendixForm with userData:', userData, 'billData:', billData, 'fileData:', fileData);
@@ -32,7 +32,7 @@ export default function AppendixForm({ userData, billData, fileData = {} }) {
       {/* Header Section */}
       <div className="mb-1">
         <h1 className="text-center text-xl font-bold mb-2">परिशिष्ट - ३</h1>
-        <p className="text-center text-sm font-semibold mb-4">नानाजी देशमुख कृषि संजीवनी प्रकल्प तुषार सिंचन संच - मोका तपसाणी परिशिष्ट</p>
+        <p className="text-center text-sm font-semibold mb-4">{fileName} {fileData.dripline_product|| '__________'} सिंचन संच - मोका तपसाणी परिशिष्ट</p>
       </div>
 
       {/* Info Section */}
