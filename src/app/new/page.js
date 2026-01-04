@@ -676,7 +676,6 @@ function NewFilePageContent() {
                   
                   if (selectedCompany?.company_id) {
                     companyId = selectedCompany.company_id;
-                    console.log('📦 Using company_id from dropdown:', companyId);
                   } else if (bill.items.length > 0 && bill.items[0].spare2) {
                     companyId = bill.items[0].spare2;
                     console.warn('⚠️ Company not in dropdown, using company_id from bill items:', companyId);
@@ -1350,16 +1349,6 @@ const submitForm = async (e) => {
     bill_date: billDate || new Date().toISOString().split('T')[0],  // Explicitly include bill_date at file level
     shapes: shapesToSave
   };
-
-  console.log('=== SUBMITTING FORM ===');
-  console.log('File Payload:', filePayload);
-  console.log('📊 Bill totals calculated:', billTotals);
-  console.log('📊 actualBillAmount:', actualBillAmount);
-  console.log('📊 formWithBillData.billAmount:', formWithBillData.billAmount);
-  console.log('🔍 Common area fields:');
-  console.log('   form.isCommonArea:', form.isCommonArea);
-  console.log('   form.schemeName:', form.schemeName);
-  console.log('   form.giverNames:', form.giverNames);
 
   try {
     setSaving(true);
