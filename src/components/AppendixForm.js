@@ -114,7 +114,7 @@ export default function AppendixForm({ userData, billData, fileData = {} }) {
                 <p className="text-xs font-semibold">देयक क्रमांक व रक्कम</p>
               </td>
               <td colSpan="5" className="border-gray-300 p-2">
-                <p className="text-sm">{billData.bill_no} :  {fileData.file_date ? new Date(fileData.file_date).toLocaleDateString('en-GB') : '__________'}</p>
+                <p className="text-sm">{billData?.bill_no} :  {fileData.file_date ? new Date(fileData.file_date).toLocaleDateString('en-GB') : '__________'}</p>
               </td>
             </tr>
           </tbody>
