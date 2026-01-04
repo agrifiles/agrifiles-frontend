@@ -28,7 +28,20 @@ export default function AppendixForm({ userData, billData, fileData , fileName =
   const formattedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
 
   return (
-    <div className="w-full bg-white min-h-screen p-8" style={{ pageBreakBefore: 'always', pageBreakInside: 'avoid' }}>
+    <div 
+      className="w-full bg-white"
+      style={{
+        width: "100%",
+        height: "auto",
+        margin: "0",
+        fontSize: "11px",
+        padding: "5mm",
+        position: "relative",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {/* Header Section */}
       <div className="mb-1">
         <h1 className="text-center text-xl font-bold mb-2">परिशिष्ट - ३</h1>

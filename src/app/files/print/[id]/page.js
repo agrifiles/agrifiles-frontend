@@ -232,6 +232,24 @@ function FilePrintPageContent({ params }) {
       `;
     }
 
+    // Fix appendix form content styling for print
+    const appendixContent = clonedFile.querySelector('#file-appendix-content');
+    if (appendixContent) {
+      appendixContent.style.cssText = `
+        width: 100%;
+        min-height: auto;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        font-size: 11px;
+        position: relative;
+        box-sizing: border-box;
+        background: white;
+        page-break-inside: auto;
+        page-break-after: always;
+      `;
+    }
+
     // Override the file-content container
     clonedFile.style.cssText = `
       margin: 0 auto;
@@ -357,6 +375,20 @@ function FilePrintPageContent({ params }) {
         padding: 5mm !important;
         box-sizing: border-box !important;
         display: block !important;
+      }
+
+      #file-appendix-content {
+        width: 100% !important;
+        min-height: auto !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        display: block !important;
+        page-break-inside: auto !important;
+        page-break-after: always !important;
+        border: none !important;
+        box-shadow: none !important;
       }
 
       /* Prevent splitting of important sections in bill */
@@ -1423,12 +1455,10 @@ function FilePrintPageContent({ params }) {
             </div>
           </div>
         )}
-
-
         {/* Appendix Form (परिशिष्ट - ३) - Only for POCRA file type */}
-        
         <div 
-          className="sheet mx-auto bg-white shadow-lg border-4 border-black"
+          id="file-appendix-content"
+          className="mx-auto bg-white shadow-lg border-4 border-black"
           style={{
             width: "210mm",
             minHeight: "297mm",
@@ -1439,18 +1469,18 @@ function FilePrintPageContent({ params }) {
             boxSizing: "border-box",
           }}
         >
-          <div style={{ padding: "20px" }}>
             <AppendixForm 
               userData={userData}
               fileData={file}
               billData={billData}
               fileName={fileName}
             />
-          </div>
         </div>
-        
-                {/* {file?.file_type === 'POCRA' && (
+      
+     
+        {/* {file?.file_type === 'POCRA' && (
         <div 
+          id="file-appendix-content"
           className="sheet mx-auto bg-white shadow-lg border-4 border-black"
           style={{
             width: "210mm",
@@ -1462,13 +1492,12 @@ function FilePrintPageContent({ params }) {
             boxSizing: "border-box",
           }}
         >
-          <div style={{ padding: "20px" }}>
             <AppendixForm 
               userData={userData}
               fileData={file}
               billData={billData}
+              fileName={fileName}
             />
-          </div>
         </div>
         )} */}
 
