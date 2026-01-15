@@ -333,6 +333,8 @@ function NewFilePageContent() {
   const [billCustomerMobile, setBillCustomerMobile] = useState('');
   const [billStatus, setBillStatus] = useState('draft');
   const [billItems, setBillItems] = useState([]);
+  const [originalBillItems, setOriginalBillItems] = useState([]); // Original bill items from database (used as reference when filtering)
+  const [allProducts, setAllProducts] = useState([]); // All unfiltered products from API
   const [lastFetchedMonthYear, setLastFetchedMonthYear] = useState('');
   const [products, setProducts] = useState([]);
   
@@ -365,6 +367,84 @@ function NewFilePageContent() {
       setFittingChargesGst(Number(gstPercent) || 0);
     }
   };
+
+  // Filter billItems when irrigation type or company changes
+  useEffect(() => {
+    if (!form.company || allProducts.length === 0) {
+      console.log(`⏭️ [SKIP FILTER] Company selected: ${!!form.company}, Products loaded: ${allProducts.length > 0}`);
+      return; // Don't filter if no company selected or no products loaded
+    }
+
+    console.log(`\n🔄 [FILTER TRIGGER] Company: "${form.company}", Irrigation Type: "${form.driplineProduct || '(none)'}"`);
+    
+    // Apply irrigation type filter to allProducts
+    const filteredProducts = filterProductsByIrrigation(allProducts, form.driplineProduct);
+    
+    // Update billItems: preserve quantities from ORIGINAL bill items (not current filtered items)
+    // This ensures filter changes don't lose data when switching between irrigation types
+    const updatedBillItems = filteredProducts.map(prod => {
+      // Look in originalBillItems (from database) instead of billItems (which changes with filter)
+      const existingItem = originalBillItems.find(item => item.product_id === (prod.product_id ?? prod.id));
+      return {
+        product_id: prod.product_id ?? prod.id,
+        description: prod.description_of_good || prod.name || prod.product_name || '',
+        hsn: prod.hsn_code || prod.hsn || '',
+        batch_no: existingItem?.batch_no || prod.batch_no || prod.batchNo || '',
+        cml_no: prod.cml_no || prod.cmlNo || '',
+        size: prod.size || '',
+        gov_rate: Number(prod.gov_rate || prod.govRate || 0),
+        sales_rate: Number(prod.selling_rate || prod.sellingRate || prod.sales_rate || 0),
+        uom: prod.unit_of_measure || prod.unit || prod.uom || '',
+        gst_percent: existingItem?.gst_percent ?? 0,
+        qty: existingItem?.qty ?? 0,
+        amount: existingItem?.amount ?? 0,
+        spare2: prod.spare2,
+        class: prod.class || ''
+      };
+    });
+    
+    console.log(`📊 [FINAL RESULT] Bill items updated: ${updatedBillItems.length} items displayed`);
+    console.log(`   Items with SR No: ${updatedBillItems.map((item, idx) => `#${idx + 1}: ${item.description.substring(0, 30)}...`).join(', ')}`);
+    setBillItems(updatedBillItems);
+  }, [form.company, form.driplineProduct, allProducts, originalBillItems]);
+
+  // Special handling for edit mode: ensure filter is applied when irrigation type is loaded from file
+  // This fixes cases where filter wasn't applied initially in edit mode
+  useEffect(() => {
+    // Only apply in edit mode (when originalBillItems is populated from loaded file)
+    if (!originalBillItems.length || !allProducts.length || !form.company) {
+      return;
+    }
+
+    // Check if we have an irrigation type filter loaded from file
+    if (form.driplineProduct) {
+      console.log(`\n🔍 [EDIT MODE FILTER] Applying filter "${form.driplineProduct}" to ${originalBillItems.length} original items`);
+      
+      const filteredProducts = filterProductsByIrrigation(allProducts, form.driplineProduct);
+      const updatedBillItems = filteredProducts.map(prod => {
+        const existingItem = originalBillItems.find(item => item.product_id === (prod.product_id ?? prod.id));
+        return {
+          product_id: prod.product_id ?? prod.id,
+          description: prod.description_of_good || prod.name || prod.product_name || '',
+          hsn: prod.hsn_code || prod.hsn || '',
+          batch_no: existingItem?.batch_no || prod.batch_no || prod.batchNo || '',
+          cml_no: prod.cml_no || prod.cmlNo || '',
+          size: prod.size || '',
+          gov_rate: Number(prod.gov_rate || prod.govRate || 0),
+          sales_rate: Number(prod.selling_rate || prod.sellingRate || prod.sales_rate || 0),
+          uom: prod.unit_of_measure || prod.unit || prod.uom || '',
+          gst_percent: existingItem?.gst_percent ?? 0,
+          qty: existingItem?.qty ?? 0,
+          amount: existingItem?.amount ?? 0,
+          spare2: prod.spare2,
+          class: prod.class || ''
+        };
+      });
+      
+      console.log(`✅ [EDIT MODE] Filtered to ${updatedBillItems.length} items matching irrigation type`);
+      setBillItems(updatedBillItems);
+    }
+  }, [originalBillItems]); // Trigger when originalBillItems is set during edit load
 
   // Load districts based on selected language
   useEffect(() => {
@@ -425,6 +505,7 @@ function NewFilePageContent() {
   useEffect(() => {
     if (!form.company) {
       setBillItems([]);
+      setOriginalBillItems([]);
       setProducts([]);
     }
     // NOTE: Product loading when company changes is handled in handleChange function
@@ -726,7 +807,14 @@ function NewFilePageContent() {
                 const productsRes = await fetch(productsUrl);
                 const productsText = await productsRes.text();
                 const productsData = JSON.parse(productsText || '{}');
-                const allProducts = productsData.products || [];
+                let allProducts = productsData.products || [];
+                
+                // IMPORTANT: Sort by product_id ASC for consistent order (same as create new mode)
+                allProducts = allProducts.sort((a, b) => {
+                  const aId = Number(a.product_id ?? a.id) || 0;
+                  const bId = Number(b.product_id ?? b.id) || 0;
+                  return aId - bId;
+                });
 
                 console.log(`✅ Loaded ${allProducts.length} products for company ${companyIdText}`);
                 
@@ -832,7 +920,9 @@ function NewFilePageContent() {
                 console.log('✅ Final bill items:', finalItems.length, '| Items with qty > 0:', itemsWithQty.length);
                 
                 setBillItems(finalItems);
+                setOriginalBillItems(finalItems); // Store original items as reference for filtering
                 setProducts(allProducts);
+                setAllProducts(allProducts); // Store all unfiltered products for filtering logic
                 
                 // Extract most common GST % from bill items with NON-ZERO QTY (for hydration in global GST field)
                 // When editing: include items with 0% GST as valid values
@@ -1085,6 +1175,34 @@ const loadProducts = async () => {
   }
 };
 
+// Filter products by irrigation type based on product.class matching form.driplineProduct
+const filterProductsByIrrigation = (allProds, irrigationType) => {
+  if (!irrigationType || irrigationType === '') {
+    // No filter - show all products
+    console.log(`📌 [NO FILTER] Showing all ${allProds.length} products`);
+    return allProds;
+  }
+
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`🔍 [BEFORE FILTER] Total items available: ${allProds.length}`);
+  console.log(`   Filter criteria: Irrigation Type = "${irrigationType}"`);
+  console.log(`   Items:`, allProds.map(p => ({ id: p.product_id, desc: p.description || p.name, class: p.class })).slice(0, 5));
+  
+  // Map user-selected values to what's stored in product.class
+  // Handle both English and Marathi values
+  const filterValue = irrigationType.toLowerCase().trim();
+  
+  const filtered = allProds.filter(prod => {
+    const classValue = (prod.class || '').toLowerCase().trim();
+    return classValue === filterValue || classValue.includes(filterValue);
+  });
+  
+  console.log(`✅ [AFTER FILTER] Matched items: ${filtered.length}`);
+  console.log(`   Filtered items:`, filtered.map(p => ({ id: p.product_id, desc: p.description || p.name, class: p.class })));
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  return filtered;
+};
+
 // Load products ONLY for selected company (filter by company_id)
 const loadProductsForCompany = async (companyId) => {
   const owner_id = getCurrentUserId();
@@ -1099,13 +1217,14 @@ const loadProductsForCompany = async (companyId) => {
     
     const res = await fetch(url);
     const data = await res.json();
-    const allProducts = data.products || [];
+    const apiProducts = data.products || [];
     
-    console.log(`✅ API returned ${allProducts.length} products`);
-    setProducts(allProducts);
+    console.log(`✅ API returned ${apiProducts.length} products`);
+    setProducts(apiProducts);
+    setAllProducts(apiProducts); // Store all unfiltered products
 
     // Initialize bill items with loaded products (qty = 0)
-    const initialItems = allProducts
+    const initialItems = apiProducts
       // Sort by product_id ASC for consistent order (oldest → newest)
       .sort((a, b) => {
         const aId = a.product_id ?? a.id;
@@ -1125,7 +1244,8 @@ const loadProductsForCompany = async (companyId) => {
         gst_percent: 0, // Default GST is 0 for all items (user can enable global GST or set per item)
         qty: 0,
         amount: 0,
-        spare2: prod.spare2
+        spare2: prod.spare2,
+        class: prod.class || '' // Store class for filtering
       }));
     
     console.log('📋 Setting billItems with:', initialItems.length, 'items');
@@ -1164,6 +1284,7 @@ const handleCompanyChangeInBill = async (newCompanyId) => {
     // No cache - load fresh products with qty=0
     console.log(`📦 No cache found, loading fresh products for company ${newCompanyIdStr}`);
     setBillItems([]);
+    setOriginalBillItems([]);
     await loadProductsForCompany(newCompanyId);
   }
   
@@ -2323,6 +2444,7 @@ const submitFormAndPrint = async (e) => {
                 <option value={t.cucumber}>{t.cucumber}</option>
                 <option value={t.brinjal}>{t.brinjal}</option>
                 <option value={t.ladyfinger}>{t.ladyfinger}</option>
+                <option value="तूर">तूर</option>
               </select>
             </div>
             <div className="flex flex-col">
@@ -3245,6 +3367,16 @@ const submitFormAndPrint = async (e) => {
         />
       </div>
 
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">{t.irrigationType}</label>
+        <select name="driplineProduct" value={form.driplineProduct} onChange={handleChange} className="mt-1 block w-full rounded-md border border-gray-200 shadow-sm px-3 py-2 bg-white">
+          <option value="">{t.irrigationType}</option>
+          <option value={t.drip}>{t.drip}</option>
+          <option value={t.sprinkler}>{t.sprinkler}</option>
+          <option value={t.microSprinkler}>{t.microSprinkler}</option>
+        </select>
+      </div>
+
       {/* <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Customer/Farmer Name</label>
         <input
@@ -3273,8 +3405,6 @@ const submitFormAndPrint = async (e) => {
       {console.log('🔍 [RENDER] Bill section rendered with', billItems.length, billItems, 'billItems:', billItems.slice(0, 3).map(b => ({ product_id: b.product_id, description: b.description, spare2: b.spare2 })))}
       <h2 className="text-lg font-semibold text-gray-800 mb-3">Products (Enter Qty to include in bill)</h2>
       <p className="text-sm text-gray-500 mb-4">All available products are shown below. Enter quantity to include them in the bill. Items with qty=0 will not be saved.</p>
-
-
 
       {/* Global GST % Shortcut - Apply same GST to all items */}
       <div className="mb-4 p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
@@ -3333,6 +3463,7 @@ const submitFormAndPrint = async (e) => {
         <table className="min-w-full bg-white">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
+              <th className="px-4 py-3 text-center text-sm font-medium text-gray-600 w-12">Sr No</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Description</th>
               <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Batch No</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Rate</th>
@@ -3345,17 +3476,28 @@ const submitFormAndPrint = async (e) => {
           <tbody className="divide-y divide-gray-100">
             {billItems.length === 0 && (
               <tr>
-                <td colSpan="6" className="py-8 text-center text-gray-500">
-                  {form.company ? 'Loading products for company...' : '⚠️ Please select a company first'}
+                <td colSpan="7" className="py-8 text-center">
+                  {!form.company ? (
+                    <div className="text-gray-500 text-sm">⚠️ {lang === 'en' ? 'Please select a company first' : 'कृपया प्रथम कंपनी निवडा'}</div>
+                  ) : form.driplineProduct && allProducts.length > 0 ? (
+                    <div className="p-6 bg-amber-50 border-2 border-amber-400 rounded-lg inline-block">
+                      <div className="text-lg font-bold text-amber-700 mb-2">⚠️ {form.driplineProduct} साठी कोणतेही प्रोडक्टस उपलब्ध नाहीत</div>
+                      <div className="text-sm text-amber-700 mb-3">{form.company} कंपनीसाठी</div>
+                      <div className="text-sm font-semibold text-amber-800">कृपया प्रोडक्टस जोडा!</div>
+                    </div>
+                  ) : (
+                    <div className="text-gray-400 text-sm">Loading products...</div>
+                  )}
                 </td>
               </tr>
             )}
 
             {billItems.length > 0 && console.log(`📊 [RENDER] Rendering ${billItems.length} bill items in table`)}
-            {billItems.map((it) => {
+            {billItems.map((it, index) => {
              // console.log(`   [Row] product_id=${it.product_id}, spare2=${it.spare2}, description=${it.description}`);
               return (
               <tr key={it.product_id} className={`transition hover:bg-green-100 ${(it.qty || 0) > 0 ? 'bg-green-100' : 'bg-white'}`}>
+                <td className="px-4 py-3 text-sm text-center font-semibold text-gray-700 w-12">{index + 1}</td>
                 <td className="px-4 py-3 text-sm text-gray-800">
                   <div className="font-medium">{it.description || 'N/A'}</div>
                   <div className="flex items-center gap-2 mt-1">
@@ -3421,18 +3563,32 @@ const submitFormAndPrint = async (e) => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
         {billItems.length === 0 && (
-          <div className="py-8 text-center text-gray-500 bg-gray-50 rounded-lg">
-            Loading products...
+          <div className="py-8 text-center">
+            {!form.company ? (
+              <div className="text-gray-500 text-sm">⚠️ {lang === 'en' ? 'Please select a company first' : 'कृपया प्रथम कंपनी निवडा'}</div>
+            ) : form.driplineProduct && allProducts.length > 0 ? (
+              <div className="p-6 bg-amber-50 border-2 border-amber-400 rounded-lg mx-auto">
+                <div className="text-lg font-bold text-amber-700 mb-2">⚠️ {form.driplineProduct} साठी</div>
+                <div className="text-base font-bold text-amber-700 mb-3">कोणतेही उत्पादने उपलब्ध नाहीत</div>
+                <div className="text-sm text-amber-700 mb-3">{form.company} कंपनीसाठी</div>
+                <div className="text-sm font-semibold text-amber-800">कृपया उत्पादन जोडण्यासाठी विनंती करा</div>
+              </div>
+            ) : (
+              <div className="text-gray-400 text-sm bg-gray-50 rounded-lg py-8">Loading products...</div>
+            )}
           </div>
         )}
 
-        {billItems.map((it) => (
+        {billItems.map((it, index) => (
           <div 
             key={it.product_id} 
             className={`p-4 rounded-lg border transition ${(it.qty || 0) > 0 ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
           >
             <div className="mb-3">
-              <div className="font-semibold text-gray-800">{it.description || 'N/A'}</div>
+              <div className="flex items-start justify-between mb-2">
+                <div className="font-semibold text-gray-800">{it.description || 'N/A'}</div>
+                <div className="text-xs font-bold text-gray-500 ml-2">#{index + 1}</div>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 {it.size && <div className="text-xs text-gray-500">Size: {it.size}</div>}
                 {it.spare2 && getCompanyInfo(it.spare2) && (
