@@ -63,7 +63,7 @@ export default function AppendixForm({ userData, billData, fileData , fileName =
                 <p className="text-xs font-semibold">तपासणी दिनांक</p>
               </td>
               <td className="p-2 w-1/6">
-                <p className="text-sm">{fileData.file_date ? new Date(fileData.file_date).toLocaleDateString('en-GB') : '__________'}</p>
+                <p className="text-sm">_______________</p>
               </td>
             </tr>
 
@@ -119,7 +119,7 @@ export default function AppendixForm({ userData, billData, fileData , fileName =
                 <p className="text-xs font-semibold">प्रत्यक्ष</p>
               </td>
               <td className="p-2 w-1/6">
-                <p className="text-sm">{fileData.irrigation_area || '__________'}</p>
+                <p className="text-sm">{ '__________'}</p>
               </td>
             </tr>
             <tr className="border-b border-gray-300">
@@ -189,8 +189,11 @@ export default function AppendixForm({ userData, billData, fileData , fileName =
       {/* Signature Section */}
       <div className="mt-1">
               <div className="mb-1  p-2  border-2 border-gray-300 bg-gray-50">
-        <p className="text-xs font-semibold text-center mb-2">(एच.डी.पी.ई. पाईप-बी.आय.एस १४१५१-पार्ट २ यांचा CML नंबर व यांचा बॅच नं नमूद करावा.)</p>
-          <p    className="text-xs mb-2">मी _________________________________ उप कृषी अधिकारी, सजा. {fileData.village}. ता. {fileData.taluka} जि . {fileData.district}. प्रमाणित करतो की, वरीलप्रमाणे मी मोका तपासणी केलेली असून ती क्षेत्र परीस्थितीप्रमाणे बरोबर आहे. सदर प्रकरणी मार्गदर्शक सूचना, मंजूर मापदंड व प्रत्यक्ष शेत परिस्थितीनुसार {fileData.irrigation_area} हेक्टर क्षेत्रासाठी अनुदान रक्कम रु. {billData?.items?.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0).toFixed(2) || '________'} अदा करणेसाठी शिफारस करण्यात येत आहे.
+
+                {(fileData.dripline_product !== 'ठिबक') && (    <p className="text-xs font-semibold text-center mb-2">(एच.डी.पी.ई. पाईप-बी.आय.एस १४१५१-पार्ट २ यांचा CML नंबर व यांचा बॅच नं नमूद करावा.)</p>)}
+                
+    
+          <p    className="text-xs mb-2">मी _________________________________ उप कृषी अधिकारी, सजा. {fileData.village}. ता. {fileData.taluka} जि . {fileData.district}. प्रमाणित करतो की, वरीलप्रमाणे मी मोका तपासणी केलेली असून ती क्षेत्र परीस्थितीप्रमाणे बरोबर आहे. सदर प्रकरणी मार्गदर्शक सूचना, मंजूर मापदंड व प्रत्यक्ष शेत परिस्थितीनुसार {fileData.irrigation_area} हेक्टर क्षेत्रासाठी अनुदान रक्कम रु._________________________ अदा करणेसाठी शिफारस करण्यात येत आहे.
 </p>
       
       </div>
